@@ -373,7 +373,7 @@
           e.spr.y = Math.round(GY + 2 - Math.sin(Math.PI * clamp(u, 0, 1)) * d.lunge_h_px * 0.8);
           if (e.t <= 0) {
             e.box = null; e.active = false; e.lunges++; this.a2Splash(e.x, GY + 2, 1);
-            if (e.lunges < 2) { e.state = 'wait'; e.spr.setVisible(false); e.x = h.x + d.trigger_ahead_px + 120; }
+            if (e.lunges < (d.lunges || 1)) { e.state = 'wait'; e.spr.setVisible(false); e.x = h.x + d.trigger_ahead_px + 120; }
             else { e.alive = false; e.spr.destroy(); return; }
           }
         }
