@@ -5,7 +5,7 @@
   const pointers = new Map(); // pointerId -> {zone, x0, y0, t0, swiped}
   const queue = [];
   let keyBrake = false;
-  const SWIPE_PX = 22; // CSS px ≈ 16 logical px at the usual phone zoom
+  const SWIPE_PX = 18; // CSS px (≈ 13 logical px at the usual phone zoom); short so a slow swipe-down still slams
   const INPUT = {
     queue,
     enabled: false,

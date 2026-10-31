@@ -44,7 +44,7 @@ html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden; 
   font-family: inherit; font-size: 22px; border-radius: 14px; touch-action: none; }
 .hudbtn:active { background: rgba(255,122,26,.6); }
 #btn-pause { right: calc(10px + var(--sr)); top: calc(8px + var(--st)); width: 64px; height: 64px; font-weight: bold; letter-spacing: 2px; }
-#btn-special { right: calc(10px + var(--sr)); top: calc(84px + var(--st)); width: 76px; height: 76px; border-radius: 50%; padding: 0; overflow: hidden; }
+#btn-special { right: calc(10px + var(--sr)); top: calc(156px + var(--st)); width: 72px; height: 72px; border-radius: 50%; padding: 0; overflow: hidden; }
 #btn-special #special-icon { position: absolute; inset: 2px; background: url(assets/ui/dom_knoedel.png) 0 0 / 200% 100% no-repeat; image-rendering: pixelated; }
 #btn-special #special-ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(var(--orange) 0deg, var(--orange) var(--charge, 0deg), transparent var(--charge, 0deg)); opacity: .55; }
 #btn-special.ready { border-color: var(--orange); animation: glow 0.8s infinite alternate; }

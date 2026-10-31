@@ -85,9 +85,9 @@ window.pickupFrame = pickupFrame;
       this.hitsTaken = 0; this.collectedBase = 0;
       this.viewW = this.scale.width;
       this.ended = false; this.dead = false; this.winDone = false; this.time0 = 0; this.hitstop = 0;
-      this.runBottles = 0; this.healsLeft = 1; this.arenaOn = false; this.boss = null; this.trolley = null; this.truck = null; 
+      this.runBottles = 0; this.bottleFrac = 0; this.healsLeft = 1; this.arenaOn = false; this.boss = null; this.trolley = null; this.truck = null; 
       let W = this.L.length_screens * 24 + 30;
-      if (this.mode === 'boss') W = this.L.arena_start_x + 1400;
+      if (this.mode === 'boss') W = this.L.arena_start_x + (B.arena_length_tiles || 2000);
       this.W = W;
       this.grid = new Uint8Array(W * ROWS);
       this.crates = new Map(); this.junk = []; this.gaps = [];
@@ -372,7 +372,7 @@ window.pickupFrame = pickupFrame;
       for (const ev of q) {
         if (ev.type === 'press') {
           if (h.grounded || h.coyote > 0) this.jump();
-          else if (!h.pending) h.pending = { t: 0.08 };
+          else if (!h.pending) h.pending = { t: M.air_tap_slam_window_s || 0.1 };
         } else if (ev.type === 'swipe' || ev.type === 'slam') {
           if (!h.grounded || (this.time0 - h.lastJumpT) < 0.2) { h.pending = null; this.slam(); }
         }
@@ -642,10 +642,13 @@ window.pickupFrame = pickupFrame;
     }
 
     // ------------------------------------------------------------ boss
+    // Boss screen x: screen_x on the 384-wide base, right-anchored on wider phones but capped so he
+    // stays inside gun range of the hero's arena zone at every aspect (16:9 .. 21:9).
+    bossScreenX() { return Math.min(this.viewW, B.screen_x_view_cap || 440) - (384 - B.screen_x); }
     startArena() {
       this.arenaOn = true;
       const cam = this.cameras.main;
-      const sx = cam.scrollX + this.viewW - (384 - B.screen_x);
+      const sx = cam.scrollX + this.bossScreenX();
       const spr = this.add.sprite(sx + 120, GY, 'boss_buergermeister', 6).setOrigin(0.5, 1).setDepth(22).setFlipX(true);
       spr.play('boss_walk');
       this.boss = { hp: B.hp_total, phase: 1, inv: 0, alive: true, spr, x: sx + 120, entering: true, timers: {}, waveCount: 0, telegraph: null, flashT: 0 };
@@ -663,7 +666,7 @@ window.pickupFrame = pickupFrame;
       const cam = this.cameras.main, h = this.hero;
       if (!this.arenaOn && !this.dead && h.x >= this.L.arena_start_x * TILE) this.startArena();
       const bs = this.boss; if (!bs) return;
-      const anchor = cam.scrollX + this.viewW - (384 - B.screen_x);
+      const anchor = cam.scrollX + this.bossScreenX();
       if (!bs.entering && bs.alive) bs.x = anchor;
       if (bs.alive && !bs.entering) bs.spr.x = Math.round(bs.x + Math.sin(this.time0 * 3) * 2);
       else bs.spr.x = Math.round(bs.x);
@@ -1054,7 +1057,7 @@ window.pickupFrame = pickupFrame;
     }
     collect(p) {
       p.alive = false; const def = PK[p.type] || {};
-      if (def.value) { this.collectedBase += def.value; this.runBottles += def.value * (this.stats.bottle_mult || 1); SFX.play(p.type === 'kasten' ? 'kasten' : 'pickup'); }
+      if (def.value) { this.collectedBase += def.value; this.bottleFrac += def.value * (this.stats.bottle_mult || 1); { const whole = Math.floor(this.bottleFrac + 1e-6); this.bottleFrac -= whole; this.runBottles += whole; } SFX.play(p.type === 'kasten' ? 'kasten' : 'pickup'); }
       if (def.heal_hero) {
         if (this.healsLeft > 0 && this.hearts < this.maxHearts) { this.hearts = Math.min(this.maxHearts, this.hearts + def.heal_hero); this.healsLeft--; SFX.play('heal'); this.sparkle(p.x, p.y, 0xd94c6b); }
         else SFX.play('pickup');
