@@ -744,6 +744,7 @@ window.pickupFrame = pickupFrame;
     damageBoss(dmg) {
       const bs = this.boss; if (!bs || !bs.alive || bs.inv > 0 || bs.entering) return false;
       if (bs.exposed > 0) dmg *= (this.BB.exposed_mult || 1);
+      if (this.BB.dps_cap && dmg < 5) { dmg = Math.min(dmg, bs.bucket); bs.bucket -= dmg; if (dmg <= 0) return false; }
       bs.hp -= dmg; this.charge += dmg * SP.charge_per_boss_damage;
       if (this.BB !== B) return this.kuhDamaged(dmg);
       bs.spr.setTintFill(0xffffff); bs.flashT = 0.05;
@@ -952,7 +953,15 @@ window.pickupFrame = pickupFrame;
       let best = null, bd = 1e9;
       const consider = (x, y, pr) => { if (!ok(x, y)) return; const d = Math.hypot(x - mx, y - my) - pr; if (d < bd) { bd = d; best = { x, y }; } };
       this.objs.lids.forEach(l => { if (l.alive && Math.hypot(l.x - mx, l.y - my) < GUN.projectile_priority_range) consider(l.x, l.y, 1000); });
-      this.objs.files.forEach(f => { if (f.alive && f.spr && Math.hypot(f.x - mx, f.y - my) < GUN.projectile_priority_range) consider(f.x, f.y - 10, 1000); });
+      this.objs.files.forEach(f => {
+        if (!f.alive || !f.spr) return;
+        if (f.key) {   // arc-2 milk cans fall fast: aim where the can will be when the bullet gets there (lead), from the full gun range
+          let px = f.x, py = f.y - 9;
+          for (let i = 0; i < 2; i++) { const tt = Math.hypot(px - mx, py - my) / GUN.bullet_speed; px = f.x + (this.arenaOn ? this.BB.arena_scroll_speed || 0 : 0) * tt; py = Math.min(GY - 4, f.y - 9 + f.a.fall_speed * tt); }
+          if (py < GY - 6) consider(px, py, 1000); return;
+        }
+        if (Math.hypot(f.x - mx, f.y - my) < GUN.projectile_priority_range) consider(f.x, f.y - 10, 1000);
+      });
       if (best) return best;
       this.objs.enemies.forEach(e => { if (e.alive && e.active && !e.friendly) consider(e.x, e.y - e.h / 2, 0); });
       if (this.boss && this.boss.alive && !this.boss.entering) consider(this.boss.x, GY - 34, 0);

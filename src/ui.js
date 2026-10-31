@@ -167,6 +167,34 @@
       };
       show(0);
     },
+    // Arc-2 ending (after the Kirmes-Kuh): dusk trailer ride home, the kiosk queue, the singing cow,
+    // the milk-with-a-candle card, then Mathi's dedication (or config.js endingMessage) and credits.
+    ending2(onDone) {
+      const cfg = window.MILCH_CONFIG || {};
+      const own = cfg.endingMessage && String(cfg.endingMessage).trim();
+      const from = cfg.endingFrom ? `<p>${esc(t('ui_from', { N: cfg.endingFrom }))}</p>` : '';
+      const cards = [
+        () => `<div class="dusk">${UI.artSprite('ending_trailer', 0, '', 2)}</div><p>${esc(t('ending2_1'))}</p>`,
+        () => `<div class="pp-row">${UI.portrait('npc_yuppie_portrait', 2, 1400)}${UI.dogSprite('wurst_happy')}</div><p>${esc(t('ending2_2'))}</p>`,
+        () => `${UI.artSprite('boss_kuh', 0, 'kuh_idle', 1)}<p class="dogline notes">♪ ♫ ♪</p><p>${esc(t('ending2_3'))}</p>`,
+        () => `${UI.artSprite('ending_milk_candle', 0, '', 2)}<p class="big a2card">${esc(t('ending2_card'))}</p>`,
+        () => `<p class="ded">${esc(own ? own.replace(/\{HERO\}/g, I18N.hero()) : t('ending_dedication'))}</p>${from}`,
+      ];
+      const minS = window.GAME_DATA.tuning.flow.card_min_show_s;
+      const show = i => {
+        if (i === 2) SFX.play('moo');
+        if (i === 3) SFX.play('cheer');
+        if (i < cards.length) {
+          const d = screen(`<div class="ending e2c${i}">${cards[i]()}<div class="tap">${esc(t('ui_continue'))} ▶</div></div>`, 'dim');
+          tapAnywhere(d, () => show(i + 1), minS);
+          return;
+        }
+        const d = screen(`<div class="ending"><p class="big">${esc(t('ending_the_end'))}</p><p class="credits" style="white-space:pre-line">${esc(t('credits'))}</p>
+          <div class="row"><button class="btn primary" data-a="map">${esc(t('ui_play_again'))}</button></div></div>`, 'dim');
+        on(d, '[data-a=map]', onDone);
+      };
+      show(0);
+    },
 
     // ---------------- HUD ----------------
     hud: {

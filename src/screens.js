@@ -343,6 +343,13 @@
     return `<span class="pdog ${cls || ''}" style="width:${24 * z}px;height:${20 * z}px"><span class="pstage-mini" style="width:24px;height:20px;transform:scale(${z})">${sp('npc_wurst', 0, 0, 0, { anim: anim || 'wurst_sit' })}</span></span>`;
   }
 
-  Object.assign(window.UI, { map, kiosk, tuete, portrait, dogSprite, layoutStage: layout });
+  // any art asset (frame or animation) on the text cards, at the game's pixel zoom
+  function artSprite(key, frame, anim, mul) {
+    const a = A[key]; if (!a) return '';
+    const fw = a.frameWidth || a.imgW, fh = a.frameHeight || a.imgH, z = zoom() * (mul || 1);
+    return `<span class="pdog" style="width:${fw * z}px;height:${fh * z}px"><span class="pstage-mini" style="width:${fw}px;height:${fh}px;transform:scale(${z})">${sp(key, frame || 0, 0, 0, { anim })}</span></span>`;
+  }
+
+  Object.assign(window.UI, { map, kiosk, tuete, portrait, dogSprite, artSprite, layoutStage: layout });
   window.addEventListener('resize', () => setTimeout(layout, 0));
 })();

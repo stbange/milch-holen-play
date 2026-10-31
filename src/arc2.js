@@ -493,6 +493,140 @@
     return [[h.x + 19, h.y - 26 + low], [h.x + 19, h.y - 22 + low]];
   };
 
+  // ------------------------------------------------------------------ boss: Kirmes-Kuh (M10)
+  // P1 Muh-Welle (raise tell -> ground shockwave), P2 + milk cans in 3 shadow lanes (shoot them for
+  // Pfand), P3 + Karussell charge (spin tell -> charge left; brake to stay clear; she stops dizzy with
+  // her back exposed for exposed_s at exposed_mult damage, then trots back to her anchor).
+  P.kuhStart = function () {
+    const BB = this.BB, cam = this.cameras.main;
+    this.arenaOn = true;
+    const sx = cam.scrollX + this.bossScreenX();
+    const spr = this.add.sprite(sx + 140, GY, 'boss_kuh', 0).setOrigin(0.5, 1).setDepth(22);
+    spr.play('kuh_idle');
+    this.boss = { hp: BB.hp_total, phase: 1, inv: 0, alive: true, spr, x: sx + 140, entering: true, telegraph: null, flashT: 0, state: 'idle', st: 0, exposed: 0, bucket: BB.dps_cap || 0 };
+    this.tweens.add({ targets: this.boss, x: sx, duration: 1500, ease: 'Quad.out', onComplete: () => { this.boss.entering = false; } });
+    this.setupPhase(1);
+    SFX.music('boss'); SFX.play('moo'); this.shake(4, 300);
+    UI.hud.toast(t('boss2_intro'), 2400);
+    UI.hud.boss(1);
+    this.time.delayedCall(1600, () => DOG.say(this, 'dog_a2_cow', 1800, true));
+  };
+  P.kuhAnim = function (k) { const s = this.boss.spr; if (!s.anims.currentAnim || s.anims.currentAnim.key !== k || !s.anims.isPlaying) s.play(k); };
+  P.kuhTellFx = function (on) {
+    const bs = this.boss;
+    if (on) { if (!bs.alert) bs.alert = this.alertFx(bs.x, GY - 100); bs.spr.setTint(ORANGE); }
+    else { this.dropAlert(bs); if (!bs.flashT) bs.spr.clearTint(); }
+  };
+  P.kuhUpdate = function (dt) {
+    const bs = this.boss, BB = this.BB, cam = this.cameras.main, h = this.hero;
+    const anchor = cam.scrollX + this.bossScreenX();
+    if (BB.dps_cap) bs.bucket = Math.min(BB.dps_cap * (bs.exposed > 0 ? BB.exposed_mult : 1), (bs.bucket || 0) + BB.dps_cap * dt * (bs.exposed > 0 ? BB.exposed_mult : 1));
+    if (!bs.entering && bs.alive) {
+      if (bs.state === 'charge') {
+        bs.x += (BB.arena_scroll_speed - bs.a.charge_speed_screen) * dt;
+        if (bs.x - cam.scrollX <= bs.a.stop_screen_x) {
+          bs.x = cam.scrollX + bs.a.stop_screen_x; bs.state = 'dizzy'; bs.exposed = bs.a.exposed_s; bs.st = bs.a.exposed_s; bs.harmless = true;
+          this.kuhAnim('kuh_dizzy'); SFX.play('bonk'); this.shake(4, 200); UI.hud.toast(t('boss2_back'), 1600);
+          this.a2Label(bs.x, GY - 84, t('boss2_back'));
+        }
+      } else if (bs.state === 'dizzy') {
+        bs.x = cam.scrollX + bs.a.stop_screen_x;
+        bs.exposed -= dt; bs.st -= dt;
+        if (bs.st <= 0) { bs.exposed = 0; bs.state = 'return'; bs.st = bs.a.return_s; bs.from = bs.x - cam.scrollX; this.kuhAnim('kuh_idle'); }
+      } else if (bs.state === 'return') {
+        bs.st -= dt; const k = 1 - Math.max(0, bs.st) / bs.a.return_s;
+        bs.x = cam.scrollX + bs.from + (this.bossScreenX() - bs.from) * (k * (2 - k));
+        if (bs.st <= 0) { bs.state = 'idle'; bs.harmless = false; bs.x = anchor; }
+      } else bs.x = anchor;
+    }
+    const wob = bs.alive && !bs.entering && bs.state === 'idle' ? Math.sin(this.time0 * 3) * 2 : 0;
+    bs.spr.x = Math.round(bs.x + wob);
+    if (bs.alert) bs.alert.setPosition(Math.round(bs.x), GY - 100);
+    if (bs.inv > 0) { bs.inv -= dt; bs.spr.setAlpha(Math.floor(bs.inv * 8) % 2 ? 0.6 : 1); } else bs.spr.setAlpha(1);
+    if (bs.flashT > 0) { bs.flashT -= dt; if (bs.flashT <= 0) { bs.flashT = 0; if (bs.telegraph || bs.state === 'spin_tell') bs.spr.setTint(ORANGE); else bs.spr.clearTint(); } }
+    if (!bs.alive || bs.entering || this.dead) return;
+    // the spin tell runs even during phase-change invulnerability so the charge is never skipped mid-tell
+    if (bs.state === 'spin_tell') {
+      bs.st -= dt;
+      if (bs.st <= 0) { bs.state = 'charge'; this.kuhTellFx(false); SFX.play('moo'); this.shake(3, 300); }
+      return;
+    }
+    if (bs.inv > 0) return;
+    if (bs.state !== 'idle') return;
+    bs.attacks.forEach(at => {
+      at.t -= dt;
+      if (at.t > 0) return;
+      const a = at.a;
+      if (bs.state !== 'idle') { at.t = 0.3; return; }
+      at.t = a.interval_s;
+      if (a.type === 'muh_wave') {
+        if (bs.telegraph) { at.t = 0.4; return; }
+        bs.telegraph = { t: Math.max(a.telegraph_s, TL.min_s), a };
+        this.kuhAnim('kuh_raise'); this.kuhTellFx(true); SFX.play('warn');
+      } else if (a.type === 'milk_rain') {
+        if (bs.telegraph) { at.t = 0.5; return; }
+        const rel = h.x - cam.scrollX, off = (Math.random() < 0.5 ? -1 : 1) * (12 + Math.random() * 14);
+        for (let i = 0; i < a.lanes; i++) {
+          const k = i - (a.lanes - 1) / 2;
+          const relX = clamp(rel + off + k * a.lane_gap_px, 14, this.bossScreenX() - BB.hitbox[0] / 2 - 8);
+          const sh = this.add.sprite(cam.scrollX + relX, GY + 1, 'hz_shadow_16', 0).setOrigin(0.5, 1).setDepth(11).setTint(ORANGE);
+          this.objs.files.push({ relX, x: cam.scrollX + relX, y: -30, a, t: Math.max(a.telegraph_s, TL.min_s) + i * 0.18, sh, spr: null, hp: a.hp, alive: true, key: 'proj_arc2', frame: 4, anim: 'proj_can' });
+        }
+        SFX.play('bell'); this.kuhAnim('kuh_stomp'); bs.spr.once('animationcomplete', () => bs.alive && bs.state === 'idle' && !bs.telegraph && this.kuhAnim('kuh_idle'));
+      } else if (a.type === 'karussell') {
+        if (bs.telegraph) { at.t = 0.5; return; }
+        bs.state = 'spin_tell'; bs.st = Math.max(a.telegraph_s, TL.min_s); bs.a = a;
+        this.kuhAnim('kuh_spin'); this.kuhTellFx(true); SFX.play('warn'); SFX.play('bell'); this.a2Bark();
+        UI.hud.toast(t('boss2_phase3'), 1300);
+      }
+    });
+    if (bs.telegraph) {
+      bs.telegraph.t -= dt;
+      if (bs.telegraph.t <= 0) {
+        const { a } = bs.telegraph; bs.telegraph = null; this.kuhTellFx(false);
+        this.kuhAnim('kuh_stomp'); SFX.play('moo');
+        bs.spr.once('animationcomplete', () => bs.alive && bs.state === 'idle' && !bs.telegraph && this.kuhAnim('kuh_idle'));
+        this.spawnWave(a, false);
+      }
+    }
+  };
+  P.kuhDamaged = function () {
+    const bs = this.boss, BB = this.BB;
+    bs.spr.setTintFill(0xffffff); bs.flashT = 0.05;
+    SFX.play('hit');
+    if (bs.hp <= 0) { this.defeatBoss(); return true; }
+    const thr = BB.phase_hp_thresholds;
+    const np = bs.hp <= thr[2] ? 3 : bs.hp <= thr[1] ? 2 : 1;
+    if (np !== bs.phase) {
+      bs.inv = BB.transition_invuln_s;
+      if (bs.telegraph) { bs.telegraph = null; this.kuhTellFx(false); }
+      this.setupPhase(np); SFX.play('moo'); this.shake(5, 300);
+      if (bs.state === 'idle') this.kuhAnim('kuh_raise');
+      const ev = (this.L.events || []).find(e => e.type === 'boss_phase' && e.phase === np);
+      UI.hud.toast(t(ev ? ev.text_key : (np === 2 ? 'boss2_phase2' : 'boss2_phase3')), 2400);
+      this.objs.files.forEach(f => this.killFile(f));
+    }
+    return true;
+  };
+  P.kuhDefeat = function () {
+    const bs = this.boss; bs.alive = false; bs.hp = 0; this.ended = true; INPUT.enabled = false; bs.harmless = true; bs.exposed = 0;
+    this.dropAlert(bs); bs.spr.clearTint(); bs.spr.setAlpha(1);
+    UI.hud.toast(t('boss2_defeat'), 3000); SFX.music(null);
+    this.objs.waves.forEach(w => { w.alive = false; w.spr.destroy(); }); this.objs.waves = [];
+    this.objs.files.forEach(f => this.killFile(f));
+    this.objs.enemies.forEach(e => e.alive && this.killEnemy(e, true));
+    bs.spr.play('kuh_cute');
+    for (let i = 0; i < 6; i++) this.time.delayedCall(i * 160, () => this.sparkle(bs.x + Math.random() * 60 - 30, GY - 20 - Math.random() * 60, 0xffd8e8));
+    this.time.delayedCall(900, () => { SFX.play('burp'); this.a2Label(bs.x - 20, GY - 90, '*rülps*'); this.shake(2, 200); });
+    this.time.delayedCall(1700, () => {
+      SFX.play('win');
+      UI.hud.toast(t('boss2_crate'), 2200);
+      const p = this.addPickup('kasten', bs.x - 50, GY - 30, true); if (p) p.mag = true;
+      for (let i = 0; i < this.BB.bottle_drop; i++) { const q = this.addPickup('bottle', bs.x - 30 + Math.random() * 40 - 20, GY - 40 - Math.random() * 30, true); q.mag = true; }
+    });
+    this.time.delayedCall(4000, () => this.finishWin());
+  };
+
   // ------------------------------------------------------------------ hero drawing
   P.a2DrawHero = function (dt) {
     const h = this.hero, s = h.spr, sup = this.vehicle === 'sup';
