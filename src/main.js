@@ -78,7 +78,7 @@
       UI.clear();
       game.scene.stop('Play');
       game.scene.start('Play', { level: n });
-      SFX.music(n === 4 ? null : (n === 5 ? 'play' : 'play'));
+      SFX.music(n === 4 ? null : 'play');
     },
     // clear bonus (spec §8b): +no_hit when no heart was lost, +collect at >= collect_ratio of the level's bottles
     clearBonus(n, st) {
@@ -96,15 +96,17 @@
       return pool.slice(0, BN.offer_count);
     },
     win(n, bottles, stats) {
+      GAMEFLOW.winSeq = (GAMEFLOW.winSeq || 0) + 1;   // the map jumps to the first open mission after a win
       const S = SAVE.data, wasUnlocked = S.unlocked, BN = window.GAME_DATA.tuning.boons;
       const bonus = GAMEFLOW.clearBonus(n, stats);
       if (S.boon && S.boon.level === n) S.boon = null;             // used up: it lasted exactly this level
       const tuete = !S.tuete[n - 1] && BN.offer_on_levels.indexOf(n) >= 0;
       S.bank += bottles + bonus.total; S.cleared[n - 1] = true; S.tuete[n - 1] = true;
-      S.unlocked = Math.max(S.unlocked, Math.min(5, n + 1)); SAVE.write();
+      S.unlocked = Math.max(S.unlocked, Math.min(10, window.GAME_DATA.levels.levels.length, n + 1)); SAVE.write();
       UI.hud.show(false);
       const next = () => {
         if (n === 5) { S.ending_seen = true; SAVE.write(); SFX.music('menu'); UI.ending(() => GAMEFLOW.toMap()); }
+        else if (n === 10) { S.ending2_seen = true; SAVE.write(); SFX.music('menu'); (UI.ending2 || UI.ending)(() => GAMEFLOW.toMap()); }
         else if (tuete) UI.tuete(n, GAMEFLOW.tueteOffer());
         else GAMEFLOW.toMap();
       };

@@ -55,7 +55,7 @@ window.pickupFrame = pickupFrame;
       }
     });
     s.hp_hearts = Math.min(s.hp_hearts, PL.max_hearts_with_upgrades);
-    s.bottle_mult = 1; s.shield_hits = 0; s.dackel_friendly = false; s.special_starts_full = false;
+    s.bottle_mult = 1; s.jump_mult = 1; s.duckling = false; s.special_recharge_mult = 1; s.shield_hits = 0; s.dackel_friendly = false; s.special_starts_full = false;
     if (boon) {
       if (boon.extra_hearts) s.hp_hearts = Math.min(boon.max_hearts || 6, s.hp_hearts + boon.extra_hearts);
       if (boon.fire_rate_add) s.fire_rate_per_s += boon.fire_rate_add;
@@ -64,6 +64,9 @@ window.pickupFrame = pickupFrame;
       if (boon.shield_hits) s.shield_hits = boon.shield_hits;
       if (boon.dackel_friendly) s.dackel_friendly = true;
       if (boon.special_starts_full) s.special_starts_full = true;
+      if (boon.jump_mult) s.jump_mult = boon.jump_mult;
+      if (boon.duckling) s.duckling = true;
+      if (boon.special_recharge_mult) s.special_recharge_mult = boon.special_recharge_mult;
     }
     return s;
   }
@@ -78,6 +81,9 @@ window.pickupFrame = pickupFrame;
       this.attract = n === 0;
       this.L = this.attract ? { mode: 'attract', length_screens: 40, signs: [], enemies: [], hazards: [], pickups: [], win: { type: 'none', x: 1e9 } } : LEVELS[n - 1];
       this.mode = this.L.mode;
+      this.BB = this.L.boss === 'kirmeskuh' ? T.boss_kuh : B;
+      this.a2 = this.L.arc === 2; this.vehicle = null; this.water = false;
+      if (this.a2) this.a2Init();
       const SB = SAVE.data.boon;
       this.boon = (!this.attract && SB && SB.level === n) ? (TU.boons.pool.find(b => b.id === SB.id) || null) : null;
       this.stats = computeStats(this.boon);
@@ -87,7 +93,7 @@ window.pickupFrame = pickupFrame;
       this.ended = false; this.dead = false; this.winDone = false; this.time0 = 0; this.hitstop = 0;
       this.runBottles = 0; this.bottleFrac = 0; this.healsLeft = 1; this.arenaOn = false; this.boss = null; this.trolley = null; this.truck = null; 
       let W = this.L.length_screens * 24 + 30;
-      if (this.mode === 'boss') W = this.L.arena_start_x + (B.arena_length_tiles || 2000);
+      if (this.mode === 'boss') W = this.L.arena_start_x + (this.BB.arena_length_tiles || 2000);
       this.W = W;
       this.grid = new Uint8Array(W * ROWS);
       this.crates = new Map(); this.junk = []; this.gaps = [];
@@ -110,7 +116,7 @@ window.pickupFrame = pickupFrame;
       this.camX = 0;
 
       this.charge = 0;
-      this.specialReq = this.stats.special_unlocked ? SP.charge_required[Math.max(0, this.stats.special_level - 1)] : 0;
+      this.specialReq = this.stats.special_unlocked ? SP.charge_required[Math.max(0, this.stats.special_level - 1)] * (this.stats.special_recharge_mult || 1) : 0;
       this.maxHearts = this.stats.hp_hearts; this.hearts = this.maxHearts;
       if (this.stats.special_starts_full && this.stats.special_unlocked) this.charge = this.specialReq;
 
@@ -136,7 +142,7 @@ window.pickupFrame = pickupFrame;
     onResize(size) {
       this.viewW = size.width;
       this.cameras.main.setSize(size.width, size.height);
-      this.parallax.forEach(p => p.spr.setSize(size.width, 216));
+      this.parallax.forEach(p => p.spr.setSize(size.width, p.h || 216));
     }
 
     // ------------------------------------------------------------ grid helpers
@@ -151,6 +157,7 @@ window.pickupFrame = pickupFrame;
 
     // ------------------------------------------------------------ background
     makeBackground() {
+      if (this.a2) return this.a2Background();
       this.parallax = [];
       [['parallax_0_sky', 0], ['parallax_1_far_hills', 0.1], ['parallax_2_mid_roofs', 0.25], ['parallax_3_near_ruins', 0.5]].forEach(([k, f], i) => {
         this.parallax.push({ spr: this.add.tileSprite(0, 0, this.viewW, 216, k).setOrigin(0).setScrollFactor(0).setDepth(i), f });
@@ -159,6 +166,7 @@ window.pickupFrame = pickupFrame;
     }
 
     makeTiles() {
+      if (this.a2) return this.a2Tiles();
       const W = this.W;
       const map = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: W, height: ROWS });
       const ts = map.addTilesetImage('village', 'tiles_village', TILE, TILE, 0, 0);
@@ -239,14 +247,14 @@ window.pickupFrame = pickupFrame;
           O.pots.push({ x, y: y + 2, y0: y + 2, spr, sh, state: 'idle', t: 0 });
         } else if (h.type === 'sperrmuell_drop') {
           O.drops.push({ x: h.x * TILE, size: h.size || 'sofa', state: 'wait', t: 0 });
-        }
+        } else if (this.a2) this.a2Hazard(h);
       });
-      this.gaps.forEach(g => {
+      if (!this.a2) this.gaps.forEach(g => {
         this.add.image((g.x - 1) * TILE, GY, 'tiles_village', 13).setOrigin(0, 1).setDepth(9);
         this.add.image((g.x + g.w) * TILE, GY, 'tiles_village', 15).setOrigin(0, 1).setDepth(9);
       });
       (L.enemies || []).forEach(e => {
-        const count = e.count || 1, spacing = e.type === 'gnome' ? EN.gnome.group_spacing_px : 0;
+        const count = e.count || 1, spacing = (EN[e.type] && EN[e.type].group_spacing_px) || 0;
         for (let i = 0; i < count; i++) this.spawnEnemy(e.type, e.x * TILE + 8 + i * spacing, GY - (e.y || 0) * TILE, { idx: i, onBalcony: (e.y || 0) > 0 });
       });
       (L.pickups || []).forEach(p => {
@@ -263,7 +271,7 @@ window.pickupFrame = pickupFrame;
         } else this.addPickup(p.type, p.x * TILE + 8, GY - y0 * TILE - 10);
       });
       (L.signs || []).forEach(s => {
-        const k = s.text_key, warn = /baustelle|dackel|sperrmuell|brake|bremsen|backoff|slam|double|jump/.test(k), x = s.x * TILE + 8;
+        const k = s.text_key, warn = /baustelle|dackel|sperrmuell|brake|bremsen|backoff|slam|double|jump|a2_(duck|hecht|weir|lock|gap|slam)/.test(k), x = s.x * TILE + 8;
         this.add.image(x, GY, 'prop_sign_post').setOrigin(0.5, 1).setDepth(9);
         const board = this.add.nineslice(x, GY - 26, warn ? 'prop_sign_board_warn' : 'prop_sign_board', 0, 32, 20, 4, 4, 4, 4).setOrigin(0.5, 1).setDepth(9);
         O.signs.push({ x, key: k, spr: board });
@@ -303,6 +311,7 @@ window.pickupFrame = pickupFrame;
       const e = { type, x, y, vx: 0, vy: 0, hp: d.hp, w: d.hitbox[0], h: d.hitbox[1], spr, state: 'idle', t: 0, alive: true, active: false,
         drops: (opt && opt.noDrop) ? 0 : (d.bottle_drop || 0), phase: ((opt && opt.idx) || 0) * 0.13, fixed: !!(opt && opt.onBalcony), flashT: 0, hop: 0 };
       e.ak = d.sprite === 'zombie_wolfi' ? 'wolfi' : type;   // animation prefix
+      if (d.a2) this.a2Spawn(e, d, opt);
       if (type === 'jogger') spr.play('jogger_walk');
       if (type === 'dackel' && this.stats.dackel_friendly) { e.friendly = true; e.state = 'sit'; spr.play('wolfi_sit'); }
       if (type === 'neighbour' && e.fixed) { this.add.image(x, y, 'balcony').setOrigin(0.5, 0).setDepth(8); this.add.image(x, y - 12, 'railing').setOrigin(0.5, 0).setDepth(21); }
@@ -318,6 +327,7 @@ window.pickupFrame = pickupFrame;
         spr: this.add.sprite(x, GY, 'hero', 12).setOrigin(0.5, 47 / 48).setDepth(25),
       };
       this.hero.spr.play('hero_ride'); this.hero.anim = 'hero_ride';
+      if (this.a2) this.a2Hero();
     }
     makeTrolley() {
       const hx = this.L.hitch_x * TILE;
@@ -344,6 +354,7 @@ window.pickupFrame = pickupFrame;
         this.updateTruck(dt);
         this.updateBoss(dt);
         this.updateEnemies(dt);
+        if (this.a2) this.a2Update(dt);
         this.updateGun(dt);
         this.updateBullets(dt);
         this.updateHazards(dt);
@@ -356,7 +367,7 @@ window.pickupFrame = pickupFrame;
       this.drawHero(dt);
       DOG.update(this, dt);
       const sx = this.cameras.main.scrollX;
-      this.parallax.forEach(p => { p.spr.tilePositionX = Math.round(sx * p.f); });
+      this.parallax.forEach(p => { p.spr.tilePositionX = Math.round(sx * p.f + (p.off || 0)); });
     }
 
     updateAttract(dt) {
@@ -367,6 +378,7 @@ window.pickupFrame = pickupFrame;
 
     // ------------------------------------------------------------ input -> hero actions
     handleInput(dt) {
+      if (this.a2 && this.a2Input(dt)) return;
       const h = this.hero;
       const q = INPUT.queue.splice(0);
       for (const ev of q) {
@@ -389,11 +401,11 @@ window.pickupFrame = pickupFrame;
     }
     jump() {
       const h = this.hero;
-      h.vy = -M.jump_velocity; h.grounded = false; h.coyote = 0; h.lastJumpT = this.time0; h.slamming = false;
+      h.vy = -M.jump_velocity * (this.stats.jump_mult || 1); h.grounded = false; h.coyote = 0; h.lastJumpT = this.time0; h.slamming = false; h.duck = 0;
       SFX.play('jump'); this.dust(h.x, h.y);
     }
     doubleJump() {
-      const h = this.hero; h.vy = -M.double_jump_velocity; h.airJumps--; h.slamming = false;
+      const h = this.hero; h.vy = -M.double_jump_velocity * (this.stats.jump_mult || 1); h.airJumps--; h.slamming = false;
       SFX.play('djump'); this.dust(h.x, h.y, 2);
       this.tweens.add({ targets: h.spr, angle: { from: 0, to: -360 }, duration: 320, onComplete: () => h.spr.setAngle(0) });
     }
@@ -403,12 +415,14 @@ window.pickupFrame = pickupFrame;
     }
 
     speedProfile() {
+      if (this.vehicle === 'bike') { const BK = T.arc2.bike; return { run: BK.run_speed, brake: BK.brake_speed, back: BK.back_off_speed }; }
       if (this.mode === 'escort' && this.trolley && this.trolley.hitched) return { run: ESC.run_speed, brake: ESC.brake_speed, back: ESC.back_off_speed };
       if (this.mode === 'chase' && this.truck && this.truck.on) return { run: CH.hero_run_speed, brake: M.brake_speed, back: M.back_off_speed };
       return { run: M.run_speed, brake: M.brake_speed, back: M.back_off_speed };
     }
 
     moveHero(dt) {
+      if (this.water) return this.a2MoveWater(dt);
       const h = this.hero, sp = this.speedProfile();
       if (h.kb > 0) h.kb -= dt;
       else if (this.ended) h.vx = approach(h.vx, 0, M.brake_decel * dt);
@@ -434,8 +448,9 @@ window.pickupFrame = pickupFrame;
       }
       h.x = nx;
       const cam = this.cameras.main;
+      if (this.a2) h.x = this.a2ClampX(h.x);
       if (this.mode === 'chase' && this.truck && this.truck.on) h.x = Math.min(h.x, cam.scrollX + CH.hero_screen_x_max);
-      if (this.mode === 'boss' && this.arenaOn) h.x = clamp(h.x, cam.scrollX + B.hero_screen_x_range[0], cam.scrollX + B.hero_screen_x_range[1]);
+      if (this.mode === 'boss' && this.arenaOn) h.x = clamp(h.x, cam.scrollX + this.BB.hero_screen_x_range[0], cam.scrollX + this.BB.hero_screen_x_range[1]);
       if (this.trolley && this.trolley.hitched) h.x = Math.min(h.x, this.trolley.x + ESC.follow_distance_px + 6);
       if (!(this.mode === 'chase' && this.truck && this.truck.on)) h.x = Math.max(h.x, cam.scrollX + 8, 8);
       // vertical
@@ -479,7 +494,7 @@ window.pickupFrame = pickupFrame;
       fx.play('slam_impact'); fx.once('animationcomplete', () => fx.destroy());
       this.dust(h.x - 8, h.y, 3); this.dust(h.x + 8, h.y, 3);
       this.objs.enemies.forEach(e => { if (e.alive && Math.abs(e.x - h.x) <= R + e.w / 2 && Math.abs(e.y - h.y) <= 28) this.damageEnemy(e, D, h.x); });
-      if (this.boss && this.boss.alive && Math.abs(this.boss.x - h.x) <= R + B.hitbox[0] / 2) this.damageBoss(D);
+      if (this.boss && this.boss.alive && Math.abs(this.boss.x - h.x) <= R + this.BB.hitbox[0] / 2) this.damageBoss(D);
       const c0 = Math.floor((h.x - R) / TILE), c1 = Math.floor((h.x + R) / TILE);
       for (let c = c0; c <= c1; c++) for (let r = rowOf(h.y - 20); r <= rowOf(h.y + 2); r++) if (this.cell(c, r) === CRATE) this.hitCrate(c, r, 99);
       this.objs.lids.forEach(l => { if (Math.abs(l.x - h.x) < R && Math.abs(l.y - h.y) < 30) this.killLid(l); });
@@ -542,10 +557,11 @@ window.pickupFrame = pickupFrame;
       // integrate in this.camX: cam.scrollX gets floored by Phaser (roundPixels), so at high refresh rates
       // (90/120 Hz phones) speed*dt < 1 px and the chase/arena scroll would stall.
       if (!(Math.abs(this.camX - cam.scrollX) < 1.5)) this.camX = cam.scrollX;
+      if (this.a2 && this.a2Camera(dt, maxX)) { cam.scrollX = this.camX; return; }
       if (this.mode === 'chase' && this.truck && this.truck.on) {
         if (!this.ended && !this.dead) this.camX = Math.min(maxX, this.camX + CH.camera_speed * dt);
       } else if (this.mode === 'boss' && this.arenaOn) {
-        if (!this.ended && !this.dead) this.camX = Math.min(maxX, this.camX + B.arena_scroll_speed * dt);
+        if (!this.ended && !this.dead) this.camX = Math.min(maxX, this.camX + this.BB.arena_scroll_speed * dt);
       } else if (!this.dead) {
         const target = clamp(h.x - CAM.follow_screen_x, 0, maxX);
         this.camX += (target - this.camX) * Math.min(1, CAM.lerp_per_s * dt);
@@ -644,14 +660,15 @@ window.pickupFrame = pickupFrame;
     // ------------------------------------------------------------ boss
     // Boss screen x: screen_x on the 384-wide base, right-anchored on wider phones but capped so he
     // stays inside gun range of the hero's arena zone at every aspect (16:9 .. 21:9).
-    bossScreenX() { return Math.min(this.viewW, B.screen_x_view_cap || 440) - (384 - B.screen_x); }
+    bossScreenX() { return Math.min(this.viewW, this.BB.screen_x_view_cap || 440) - (384 - this.BB.screen_x); }
     startArena() {
+      if (this.BB !== B) return this.kuhStart();
       this.arenaOn = true;
       const cam = this.cameras.main;
       const sx = cam.scrollX + this.bossScreenX();
       const spr = this.add.sprite(sx + 120, GY, 'boss_buergermeister', 6).setOrigin(0.5, 1).setDepth(22).setFlipX(true);
       spr.play('boss_walk');
-      this.boss = { hp: B.hp_total, phase: 1, inv: 0, alive: true, spr, x: sx + 120, entering: true, timers: {}, waveCount: 0, telegraph: null, flashT: 0 };
+      this.boss = { hp: this.BB.hp_total, phase: 1, inv: 0, alive: true, spr, x: sx + 120, entering: true, timers: {}, waveCount: 0, telegraph: null, flashT: 0 };
       this.tweens.add({ targets: this.boss, x: sx, duration: 1400, ease: 'Quad.out', onComplete: () => { this.boss.entering = false; this.boss.spr.play('boss_idle'); } });
       this.setupPhase(1);
       SFX.music('boss'); SFX.play('stamp'); this.shake(4, 300);
@@ -659,13 +676,14 @@ window.pickupFrame = pickupFrame;
       UI.hud.boss(1);
     }
     setupPhase(p) {
-      const bs = this.boss; bs.phase = p; bs.attacks = B.phases[p - 1].attacks.map(a => ({ a, t: (a.offset_s || 0) + (p === 1 ? 2.0 : 1.5), n: 0 }));
+      const bs = this.boss; bs.phase = p; bs.attacks = this.BB.phases[p - 1].attacks.map(a => ({ a, t: (a.offset_s || 0) + (p === 1 ? 2.0 : 1.5), n: 0 }));
     }
     updateBoss(dt) {
       if (this.mode !== 'boss') return;
       const cam = this.cameras.main, h = this.hero;
       if (!this.arenaOn && !this.dead && h.x >= this.L.arena_start_x * TILE) this.startArena();
       const bs = this.boss; if (!bs) return;
+      if (this.BB !== B) return this.kuhUpdate(dt);
       const anchor = cam.scrollX + this.bossScreenX();
       if (!bs.entering && bs.alive) bs.x = anchor;
       if (bs.alive && !bs.entering) bs.spr.x = Math.round(bs.x + Math.sin(this.time0 * 3) * 2);
@@ -717,22 +735,25 @@ window.pickupFrame = pickupFrame;
       const hgt = big ? a.every_second_wave.wave_h : a.wave_h;
       SFX.play('stamp'); this.shake(big ? 6 : 3, 160);
       const wk = big ? 'boss_stamp_wave_big' : 'boss_stamp_wave';
-      const spr = this.add.sprite(bs.x - 30, GY, wk, 0).setOrigin(0.5, 1).setDepth(33).setFlipX(true); spr.play(big ? 'stamp_wave_big' : 'stamp_wave');
-      this.objs.waves.push({ x: bs.x - 30, vx: B.arena_scroll_speed - a.wave_speed_screen, w: a.wave_w, h: hgt, spr, dmg: a.damage, alive: true });
-      const label = this.add.text(bs.x - 16, GY - 80, t(big ? 'boss_big_stamp' : 'boss_stamp'), { fontFamily: '"Pixelify Sans", Pixelify, sans-serif', fontSize: '10px', color: '#c43c3c', stroke: '#1a1426', strokeThickness: 3 }).setOrigin(0.5).setDepth(50).setAngle(-8);
+      const wx = bs.x - (this.BB.wave_from || 30);
+      const spr = this.add.sprite(wx, GY, wk, 0).setOrigin(0.5, 1).setDepth(33).setFlipX(true); spr.play(big ? 'stamp_wave_big' : 'stamp_wave');
+      this.objs.waves.push({ x: wx, vx: this.BB.arena_scroll_speed - a.wave_speed_screen, w: a.wave_w, h: hgt, spr, dmg: a.damage, alive: true });
+      const label = this.add.text(bs.x - 16, GY - 80, t(big ? 'boss_big_stamp' : (this.BB.wave_label || 'boss_stamp')), { fontFamily: '"Pixelify Sans", Pixelify, sans-serif', fontSize: '10px', color: '#c43c3c', stroke: '#1a1426', strokeThickness: 3 }).setOrigin(0.5).setDepth(50).setAngle(-8);
       this.tweens.add({ targets: label, y: label.y - 16, alpha: 0, duration: 700, delay: 300, onComplete: () => label.destroy() });
     }
     damageBoss(dmg) {
       const bs = this.boss; if (!bs || !bs.alive || bs.inv > 0 || bs.entering) return false;
+      if (bs.exposed > 0) dmg *= (this.BB.exposed_mult || 1);
       bs.hp -= dmg; this.charge += dmg * SP.charge_per_boss_damage;
+      if (this.BB !== B) return this.kuhDamaged(dmg);
       bs.spr.setTintFill(0xffffff); bs.flashT = 0.05;
       if (!bs.telegraph && (!bs.spr.anims.isPlaying || bs.spr.anims.currentAnim.key === 'boss_idle')) { bs.spr.play('boss_hit'); bs.spr.once('animationcomplete', () => bs.alive && !bs.telegraph && bs.spr.play('boss_idle')); }
       SFX.play('hit');
-      const thr = B.phase_hp_thresholds;
+      const thr = this.BB.phase_hp_thresholds;
       if (bs.hp <= 0) { this.defeatBoss(); return true; }
       const newPhase = bs.hp <= thr[2] ? 3 : bs.hp <= thr[1] ? 2 : 1;
       if (newPhase !== bs.phase) {
-        bs.inv = B.transition_invuln_s; bs.telegraph = null;
+        bs.inv = this.BB.transition_invuln_s; bs.telegraph = null;
         this.setupPhase(newPhase); bs.spr.clearTint(); bs.flashT = 0; bs.spr.play('boss_rage'); SFX.play('honk'); this.shake(5, 300);
         const ev = (this.L.events || []).find(e => e.type === 'boss_phase' && e.phase === newPhase);
         if (ev) UI.hud.toast(t(ev.text_key), 2400);
@@ -741,6 +762,7 @@ window.pickupFrame = pickupFrame;
       return true;
     }
     defeatBoss() {
+      if (this.BB !== B) return this.kuhDefeat();
       const bs = this.boss; bs.alive = false; bs.hp = 0; this.ended = true; INPUT.enabled = false;
       UI.hud.toast(t('boss_defeat'), 3000); bs.spr.clearTint(); bs.spr.play('boss_defeat'); SFX.play('win'); SFX.music(null);
       this.objs.waves.forEach(w => { w.alive = false; w.spr.destroy(); }); this.objs.waves = [];
@@ -749,7 +771,7 @@ window.pickupFrame = pickupFrame;
       for (let i = 0; i < 8; i++) this.time.delayedCall(i * 220, () => { this.poof(bs.x + Math.random() * 40 - 20, GY - Math.random() * 60); this.shake(3, 120); SFX.play('poof'); });
       this.time.delayedCall(1800, () => {
         this.hat(bs.x, GY - 70, 'boss'); bs.spr.setVisible(false); this.poof(bs.x, GY - 30);
-        for (let i = 0; i < B.bottle_drop; i++) { const p = this.addPickup('bottle', bs.x + Math.random() * 30 - 15, GY - 40 - Math.random() * 30, true); p.mag = true; }
+        for (let i = 0; i < this.BB.bottle_drop; i++) { const p = this.addPickup('bottle', bs.x + Math.random() * 30 - 15, GY - 40 - Math.random() * 30, true); p.mag = true; }
       });
       this.time.delayedCall(3600, () => this.finishWin());
     }
@@ -764,6 +786,7 @@ window.pickupFrame = pickupFrame;
       const cam = this.cameras.main, right = cam.scrollX + this.viewW + 24;
       this.objs.enemies.forEach(e => {
         if (!e.alive) return;
+        if (e.a2) { this.a2Enemy(e, EN[e.type], dt, cam); return; }
         if (e.type === 'dackel') this.edgeArrow(e, cam);
         if (!e.active) { if (e.x < right) { e.active = true; } else return; }
         if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) e.spr.clearTint(); }
@@ -807,7 +830,7 @@ window.pickupFrame = pickupFrame;
       // lids
       this.objs.lids.forEach(l => {
         if (!l.alive) return;
-        l.vy += 400 * dt; l.x += l.vx * dt; l.y += l.vy * dt; l.spr.setPosition(Math.round(l.x), Math.round(l.y));
+        l.vy += (l.g || 400) * dt; l.x += l.vx * dt; l.y += l.vy * dt; l.spr.setPosition(Math.round(l.x), Math.round(l.y));
         if (l.y >= GY - 3 || this.solidAt(l.x, l.y)) this.killLid(l);
       });
       this.objs.lids = this.objs.lids.filter(l => l.alive);
@@ -897,6 +920,7 @@ window.pickupFrame = pickupFrame;
     }
     killLid(l) {
       if (!l.alive) return; l.alive = false;
+      if (l.kind) return this.a2KillProj(l);
       l.spr.play('lid_break'); l.spr.once('animationcomplete', () => l.spr.destroy()); SFX.play('crate');
     }
     damageEnemy(e, dmg, fromX) {
@@ -921,7 +945,7 @@ window.pickupFrame = pickupFrame;
     }
 
     // ------------------------------------------------------------ guns
-    muzzles() { const h = this.hero; return [[h.x + 21, h.y - 10], [h.x + 21, h.y - 4]]; }
+    muzzles() { const h = this.hero; if (this.vehicle) return this.a2Muzzles(); return [[h.x + 21, h.y - 10], [h.x + 21, h.y - 4]]; }
     findTarget(mx, my) {
       const R = GUN.auto_target_range, cone = GUN.auto_target_cone_deg * Math.PI / 180;
       const ok = (x, y) => { const dx = x - mx, dy = y - my; if (dx < 4) return false; const d = Math.hypot(dx, dy); if (d > R) return false; return Math.abs(Math.atan2(dy, dx)) <= cone; };
@@ -970,13 +994,13 @@ window.pickupFrame = pickupFrame;
         if (v === CRATE) { this.hitCrate(c, r, GUN.bullet_damage); hit(); return; }
         if (v === SOLID || v === JUNK) { hit(); return; }
         for (const l of this.objs.lids) if (l.alive && Math.abs(l.x - b.x) < 6 + hb + bonus && Math.abs(l.y - b.y) < 3 + hb + bonus) { this.killLid(l); hit(); return; }
-        for (const f of this.objs.files) if (f.alive && f.spr && Math.abs(f.x - b.x) < 12 + hb && b.y > f.y - 20 - hb && b.y < f.y + hb) { this.killFile(f); hit(); return; }
+        for (const f of this.objs.files) if (f.alive && f.spr && Math.abs(f.x - b.x) < 12 + hb && b.y > f.y - 20 - hb && b.y < f.y + hb) { this.killFile(f, true); hit(); return; }
         for (const e of this.objs.enemies) {
           if (!e.alive || !e.active || e.friendly) continue;
           if (Math.abs(e.x - b.x) < e.w / 2 + hb + bonus && b.y > e.y - e.h - hb - bonus && b.y < e.y + hb + bonus) { this.damageEnemy(e, GUN.bullet_damage, b.x - b.vx); this.spark(b.x, b.y); hit(); return; }
         }
         const bs = this.boss;
-        if (bs && bs.alive && !bs.entering && Math.abs(bs.x - b.x) < B.hitbox[0] / 2 + hb && b.y > GY - B.hitbox[1]) {
+        if (bs && bs.alive && !bs.entering && Math.abs(bs.x - b.x) < this.BB.hitbox[0] / 2 + hb && b.y > GY - this.BB.hitbox[1]) {
           if (bs.inv <= 0) { this.damageBoss(GUN.bullet_damage); this.spark(b.x, b.y); } hit(); return;
         }
       });
@@ -984,7 +1008,7 @@ window.pickupFrame = pickupFrame;
     }
 
     // ------------------------------------------------------------ hazards
-    heroBox() { const h = this.hero; return { x0: h.x - HB_W / 2, x1: h.x + HB_W / 2, y0: h.y - HB_OFF - HB_H, y1: h.y - HB_OFF }; }
+    heroBox() { const h = this.hero, hh = h.duck > 0 ? T.arc2.water.duck_hurtbox_h : HB_H; return { x0: h.x - HB_W / 2, x1: h.x + HB_W / 2, y0: h.y - HB_OFF - hh, y1: h.y - HB_OFF }; }
     overlap(a, b) { return a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0; }
     updateHazards(dt) {
       const h = this.hero, P = HZ.blumentopf, hb = this.heroBox(), tb = this.trolley && this.trolley.hitched ? this.trolleyBox() : null;
@@ -993,7 +1017,7 @@ window.pickupFrame = pickupFrame;
           // the wobble is shorter than tells.min_s: the "!" + creak start early so the whole tell is >= min_s
           const pre = Math.max(0, TL.min_s - P.telegraph_s) * Math.max(0, h.vx);
           if (!p.alert && p.x - h.x < P.trigger_ahead_px + pre) { p.alert = this.alertFx(p.x, p.y - 14); SFX.play('creak'); }
-          if (p.x - h.x < P.trigger_ahead_px) { p.state = 'tele'; p.t = P.telegraph_s; p.spr.play('blumentopf_wobble'); p.sh.setAlpha(0.5); }
+          if (p.x - h.x < P.trigger_ahead_px) { p.state = 'tele'; p.t = P.telegraph_s; p.spr.play(p.wob || 'blumentopf_wobble'); p.sh.setAlpha(0.5); }
         }
         else if (p.state === 'tele') { p.t -= dt; if (p.t <= 0) { p.state = 'fall'; p.spr.stop(); p.spr.setFrame(0); this.dropAlert(p); } }
         else if (p.state === 'fall') {
@@ -1020,7 +1044,7 @@ window.pickupFrame = pickupFrame;
       this.objs.files.forEach(f => {
         if (!f.alive) return;
         f.x = cam.scrollX + f.relX; f.sh.x = f.x;
-        if (!f.spr) { f.t -= dt; f.sh.setFrame(Math.min(2, Math.floor(3 * (1 - f.t / f.a.telegraph_s)))); if (f.t <= 0) { f.spr = this.add.sprite(f.x, f.y, 'boss_aktenstapel', 0).setOrigin(0.5, 1).setDepth(29); } return; }
+        if (!f.spr) { f.t -= dt; f.sh.setFrame(Math.min(2, Math.floor(3 * (1 - f.t / f.a.telegraph_s)))); if (f.t <= 0) { f.spr = this.add.sprite(f.x, f.y, f.key || 'boss_aktenstapel', f.frame || 0).setOrigin(0.5, 1).setDepth(29); if (f.anim) f.spr.play(f.anim); } return; }
         f.y += f.a.fall_speed * dt; f.spr.setPosition(Math.round(f.x), Math.round(f.y));
         const box = { x0: f.x - f.a.w / 2, x1: f.x + f.a.w / 2, y0: f.y - f.a.h, y1: f.y };
         if (this.overlap(box, hb)) { this.hurtHero(); this.killFile(f); }
@@ -1029,10 +1053,12 @@ window.pickupFrame = pickupFrame;
       this.objs.files = this.objs.files.filter(f => f.alive);
     }
     breakPot(p) {
+      if (p.wob) { p.state = 'gone'; p.sh.destroy(); this.dropAlert(p); this.poof(p.x, p.y - 6); p.spr.destroy(); SFX.play('crate'); return; }
       p.state = 'gone'; p.sh.destroy(); this.dropAlert(p); p.spr.play('blumentopf_break'); p.spr.once('animationcomplete', () => p.spr.destroy()); SFX.play('crate');
     }
-    killFile(f) {
+    killFile(f, shot) {
       if (!f.alive) return; f.alive = false; f.sh.destroy();
+      if (f.key) return this.a2KillCan(f, shot);
       if (f.spr) { f.spr.play('aktenstapel_break'); f.spr.once('animationcomplete', () => f.spr.destroy()); SFX.play('crate'); }
     }
 
@@ -1076,17 +1102,24 @@ window.pickupFrame = pickupFrame;
       if (this.attract || this.dead || this.ended || !this.stats.special_unlocked || this.charge < this.specialReq) return;
       this.charge = 0;
       const h = this.hero, lvl = this.stats.special_level - 1;
-      const spr = this.add.sprite(h.x + 16, h.y, 'fx_knoedel', 0).setOrigin(0.5, 1).setDepth(28);
-      spr.play('knoedel_roll'); SFX.play('knoedel'); this.shake(2, 120);
-      this.objs.knoedels.push({ x: h.x + 16, y: h.y, life: SP.knoedel_lifetime_s, spr, dmgE: SP.damage_per_enemy[lvl], dmgB: SP.damage_vs_boss[lvl], hitBoss: false, hit: new Set() });
+      const skip = this.water;   // on the river the Knödel is a skipping stone (3 bounces)
+      const spr = skip ? this.add.sprite(h.x + 16, h.y - 8, 'proj_arc2', 8).setDepth(28) : this.add.sprite(h.x + 16, h.y, 'fx_knoedel', 0).setOrigin(0.5, 1).setDepth(28);
+      spr.play(skip ? 'proj_stone' : 'knoedel_roll'); SFX.play('knoedel'); this.shake(2, 120);
+      this.objs.knoedels.push({ x: h.x + 16, y: h.y, life: SP.knoedel_lifetime_s, spr, dmgE: SP.damage_per_enemy[lvl], dmgB: SP.damage_vs_boss[lvl], hitBoss: false, hit: new Set(), skip, vy: skip ? -160 : 0, bounces: 0, yy: h.y - 8 });
     }
     updateKnoedels(dt) {
       const R = SP.knoedel_radius;
       this.objs.knoedels.forEach(k => {
         if (k.life <= 0) return;
         k.life -= dt; k.x += SP.knoedel_roll_speed * dt;
+        if (k.skip) {
+          k.vy += 520 * dt; k.yy += k.vy * dt;
+          if (k.yy >= GY - 4 && k.vy > 0) { k.yy = GY - 4; k.bounces++; k.vy = -150; this.a2Splash(k.x, GY + 2, 0.6); SFX.play('land'); if (k.bounces > 3) k.life = 0; }
+          k.y = k.yy + R; k.spr.setPosition(Math.round(k.x), Math.round(k.yy));
+        } else {
         const f = this.floorBelow(k.x, k.y); k.y = f === Infinity ? k.y + 200 * dt : f;
         k.spr.setPosition(Math.round(k.x), Math.round(k.y));
+        }
         const cx = k.x, cy = k.y - R;
         this.objs.enemies.forEach(e => { if (e.alive && e.active && !k.hit.has(e) && Math.abs(e.x - cx) < R + e.w / 2 && cy + R > e.y - e.h && cy - R < e.y) { k.hit.add(e); this.damageEnemy(e, k.dmgE, cx); } });
         this.objs.lids.forEach(l => { if (l.alive && Math.hypot(l.x - cx, l.y - cy) < R + 8) this.killLid(l); });
@@ -1095,7 +1128,8 @@ window.pickupFrame = pickupFrame;
         for (let r = rowOf(cy - R); r <= rowOf(cy + R - 1); r++) if (this.cell(c, r) === CRATE) this.hitCrate(c, r, 99);
         this.junk.forEach(d => { if (d.state === 'landed' && cx + R > d.x && cx - R < d.x + d.w * TILE) this.smashJunk(d); });
         const bs = this.boss;
-        if (bs && bs.alive && !k.hitBoss && Math.abs(bs.x - cx) < B.hitbox[0] / 2 + R) { k.hitBoss = true; if (bs.inv <= 0) { this.damageBoss(k.dmgB); this.shake(4, 200); } }
+        if (bs && bs.alive && !k.hitBoss && Math.abs(bs.x - cx) < this.BB.hitbox[0] / 2 + R) { k.hitBoss = true; if (bs.inv <= 0) { this.damageBoss(k.dmgB); this.shake(4, 200); } }
+        if (k.life <= 0 && k.skip) { this.a2Splash(k.x, GY + 2, 1); k.spr.destroy(); return; }
         if (k.life <= 0) { k.spr.play('knoedel_burst'); k.spr.once('animationcomplete', () => k.spr.destroy()); SFX.play('poof'); }
       });
       this.objs.knoedels = this.objs.knoedels.filter(k => k.life > 0);
@@ -1111,7 +1145,8 @@ window.pickupFrame = pickupFrame;
       const h = this.hero, hb = this.heroBox(), tb = this.trolley && this.trolley.hitched ? this.trolleyBox() : null;
       for (const e of this.objs.enemies) {
         if (!e.alive || !e.active || e.friendly) continue;
-        const eb = { x0: e.x - e.w / 2, x1: e.x + e.w / 2, y0: e.y - e.h, y1: e.y };
+        if (e.a2 && !this.a2Contact(e, hb)) continue;
+        const eb = e.box ? e.box : { x0: e.x - e.w / 2, x1: e.x + e.w / 2, y0: e.y - e.h, y1: e.y };
         const dazed = e.type === 'dackel' && (e.state === 'dizzy' || e.state === 'skid');   // a dizzy Wolfi is harmless
         if (this.overlap(hb, eb)) {
           if (h.vy > 0 && hb.y1 - h.vy / 60 <= eb.y0 + 6) { // stomp
@@ -1126,12 +1161,12 @@ window.pickupFrame = pickupFrame;
       }
       for (const l of this.objs.lids) {
         if (!l.alive) continue;
-        const lb = { x0: l.x - 6, x1: l.x + 6, y0: l.y - 3, y1: l.y + 3 };
+        const lb = l.kind ? { x0: l.x - 5, x1: l.x + 5, y0: l.y - 5, y1: l.y + 5 } : { x0: l.x - 6, x1: l.x + 6, y0: l.y - 3, y1: l.y + 3 };
         if (this.overlap(hb, lb)) { this.hurtHero(); this.killLid(l); }
         else if (tb && this.overlap(tb, lb)) { this.hurtTrolley(EN.neighbour.lid_damage); this.killLid(l); }
       }
       const bs = this.boss;
-      if (bs && bs.alive && !bs.entering && this.overlap(hb, { x0: bs.x - B.hitbox[0] / 2, x1: bs.x + B.hitbox[0] / 2, y0: GY - B.hitbox[1], y1: GY })) this.hurtHero();
+      if (bs && bs.alive && !bs.entering && !bs.harmless && this.overlap(hb, { x0: bs.x - this.BB.hitbox[0] / 2, x1: bs.x + this.BB.hitbox[0] / 2, y0: GY - this.BB.hitbox[1], y1: GY })) this.hurtHero();
     }
     checkWin() {
       const w = this.L.win, h = this.hero;
@@ -1144,6 +1179,7 @@ window.pickupFrame = pickupFrame;
       if (w.type === 'reach_x_with_trolley' && !(this.trolley && this.trolley.hitched && this.trolley.hp > 0)) return;
       this.ended = true; INPUT.enabled = false; UI.hud.warn(null);
       SFX.play('win'); SFX.music(null);
+      if (this.a2) this.a2Win();
       if (this.levelNum === 1) { const m = this.add.sprite(h.x + 6, h.y - 44, 'pickups', 10).setDepth(40); this.tweens.add({ targets: m, y: m.y - 10, duration: 400, yoyo: true, repeat: -1 }); }
       this.time.delayedCall(1400, () => this.finishWin());
     }
@@ -1164,7 +1200,7 @@ window.pickupFrame = pickupFrame;
       if (set('boon', this.boonHud || null)) UI.hud.boon(this.boonHud || null);
       if (this.mode === 'boss') {
         UI.hud.progress(null);
-        const f = this.boss ? Math.round(100 * this.boss.hp / B.hp_total) / 100 : null;
+        const f = this.boss ? Math.round(100 * this.boss.hp / this.BB.hp_total) / 100 : null;
         if (set('boss', f)) UI.hud.boss(f);
       } else {
         const f = Math.round(100 * clamp(this.hero.x / (this.L.win.x * TILE), 0, 1)) / 100;
@@ -1185,6 +1221,7 @@ window.pickupFrame = pickupFrame;
 
     // ------------------------------------------------------------ hero drawing
     drawHero(dt) {
+      if (this.vehicle) return this.a2DrawHero(dt);
       const h = this.hero, s = h.spr;
       let anim;
       if (this.dead) anim = 'hero_ko';
@@ -1208,6 +1245,7 @@ window.pickupFrame = pickupFrame;
     poof(x, y) { const p = this.add.sprite(x, y + 8, 'fx_dust_poof', 0).setOrigin(0.5, 1).setDepth(35).setScale(1.5); p.play('dust_poof'); p.once('animationcomplete', () => p.destroy()); }
     dust(x, y, n) { for (let i = 0; i < (n || 1); i++) { const p = this.add.sprite(x + (Math.random() * 8 - 4), y, 'fx_dust_poof', 0).setOrigin(0.5, 1).setDepth(26).setScale(0.6); p.play('dust_poof'); p.once('animationcomplete', () => p.destroy()); } }
     hat(x, y, type) {
+      if (this.a2 && type !== 'boss') return;
       const f = { jogger: 0, gnome: 1, neighbour: 2, dackel: 3 }[type];
       const s = f === undefined ? this.add.sprite(x, y, 'boss_buergermeister', 36).setOrigin(0.5, 1) : this.add.sprite(x, y, 'fx_hats', f).setOrigin(0.5, 1);
       s.setDepth(27);
@@ -1217,6 +1255,8 @@ window.pickupFrame = pickupFrame;
     }
     spark(x, y) { const s = this.add.image(x, y, 'spark', 0).setDepth(36); this.time.delayedCall(60, () => s.destroy()); }
     sparkle(x, y, tint) { for (let i = 0; i < 6; i++) { const s = this.add.image(x, y, 'spark', 1).setDepth(36).setTint(tint || 0xffffff); this.tweens.add({ targets: s, x: x + Math.cos(i) * 18, y: y + Math.sin(i) * 18, alpha: 0, duration: 400, onComplete: () => s.destroy() }); } }
+    // exported for src/arc2.js
+    static consts() { return { TILE, GY, ROW0, ROWS, GROUND_ROW, EMPTY, SOLID, ONEWAY, CRATE, JUNK, HB_W, HB_H, HB_OFF, rng, isSolid, clamp, approach }; }
     debris(x, y) { const s = this.add.rectangle(x, y, 3, 3, 0x8a5a3b).setDepth(36); this.tweens.add({ targets: s, x: x + Math.random() * 40 - 20, y: y + 20 + Math.random() * 10, angle: 180, alpha: 0, duration: 500, ease: 'Quad.in', onComplete: () => s.destroy() }); }
   }
 

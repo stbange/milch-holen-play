@@ -89,6 +89,16 @@
     for (const k in d.cd) d.cd[k] -= dt;
     const cam = sc.cameras.main;
 
+    // arc 2: Wurst is drawn in the vehicle sheets (on the SUP nose / in the bike basket); only his bubble lives here
+    if (sc.vehicle || sc.cutscene) {
+      d.spr.setVisible(false); d.ride = true;
+      d.x = h.x + (sc.vehicle === 'sup' ? 20 : -16); d.y = h.y - 10;
+      if (sc.ended && !sc.dead && d.state !== 'happy') { d.state = 'happy'; say(sc, 'dog_win', 2600, true); }
+      if (sc.dead && d.state !== 'sad') { d.state = 'sad'; if (Math.random() < 0.7) say(sc, 'dog_sad', 2000, true); }
+      if (d.bubble) { if (sc.time0 > d.bubble.until) kill(d); else placeBubble(sc, d); }
+      return;
+    }
+
     // celebration / sadness override everything
     if (sc.ended && !sc.dead && d.state !== 'happy') {
       d.state = 'happy'; d.st = 0; say(sc, 'dog_win', 2600, true);
@@ -236,7 +246,7 @@
     if (Math.random() < 0.5) say(sc, 'dog_yikes', 900);
   }
   function onHurt(sc) { const d = sc.dog; if (d && !sc.dead && Math.random() < 0.4) say(sc, 'dog_hurt', 1600); }
-  function onRespawn(sc) { const d = sc.dog; if (d && !d.ride) teleport(sc, d, 'respawn'); }
+  function onRespawn(sc) { const d = sc.dog; if (d && !d.ride && !sc.vehicle) teleport(sc, d, 'respawn'); }
 
   window.DOG = { create, update, onSlam, onHurt, onRespawn, say };
 })();

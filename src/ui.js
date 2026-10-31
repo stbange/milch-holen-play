@@ -66,9 +66,16 @@
     // ---------------- Pre-level: neighbour's note + mission goal ----------------
     levelCard(n) {
       const L = LEVELS[n - 1];
+      if (n === 6 && !SAVE.data.hints.a2intro) { UI.a2Intro(() => { SAVE.data.hints.a2intro = true; SAVE.write(); UI.levelCard(6); }); return; }
       const d = screen(`<div class="card note">${UI.dogSprite('wurst_sit', 'note-dog')}<h2>${esc(t(L.title_key))}</h2><p>${esc(t(L.note_key))}</p>
         <div class="goal">➜ ${esc(t(L.goal_key))}</div><div class="tap">${esc(t('ui_tap_to_start'))} ▶</div></div>`, 'dim');
       tapAnywhere(d, () => { clear(); GAMEFLOW.startLevel(n); }, window.GAME_DATA.tuning.flow.card_min_show_s * 0.5);
+    },
+    // arc 2 opener (once): Yuppie is out of milk -> SUP down the Ahse
+    a2Intro(onDone) {
+      const d = screen(`<div class="card note a2intro">${UI.portrait('npc_yuppie_portrait', 0, 1600)}<h2>${esc(t('a2_intro_title'))}</h2><p>${esc(t('a2_intro_text'))}</p>
+        <div class="pp-row">${UI.dogSprite('wurst_tilt')}<p class="dogline">${esc(t('a2_intro_dog'))}</p></div><div class="tap">${esc(t('ui_continue'))} ▶</div></div>`, 'dim');
+      tapAnywhere(d, () => { clear(); onDone(); }, window.GAME_DATA.tuning.flow.card_min_show_s * 0.5);
     },
     // ---------------- In-level overlays ----------------
     pause(onResume, onRestart, onMap) {
@@ -101,7 +108,7 @@
       const lines = [];
       if (B.noHit) lines.push(['ui_bonus_no_hit', B.noHit]);
       if (B.collect) lines.push(['ui_bonus_collect', B.collect]);
-      const kioskBtn = n < 5 && !tuete ? `<button class="btn" data-a="kiosk">${esc(t('ui_to_kiosk'))}</button>` : '';
+      const kioskBtn = n !== 5 && n !== 10 && !tuete ? `<button class="btn" data-a="kiosk">${esc(t('ui_to_kiosk'))}</button>` : '';
       const d = screen(`<div class="card wincard" style="text-align:center"><h2>${esc(t('ui_level_clear'))}</h2>
         <div class="pp-row">${UI.portrait('hero_portrait', 2, 1200)}${UI.dogSprite('wurst_happy')}</div>${n === 1 ? '<span class="milk"></span>' : ''}<p>${esc(t(L.card_after_key))}</p>
         <div class="results"><span>${esc(t('ui_result_pfand', { N: bottles }))}</span><span>${esc(t('ui_result_hits', { N: B.hits }))}</span></div>
@@ -190,10 +197,11 @@
         const el = $('hud-boon'); if (!el) return;
         if (!id) { el.classList.add('hidden'); el.removeAttribute('data-id'); return; }
         if (el.dataset.id === id) return;
-        const a = window.ART_MANIFEST.assets.find(x => x.key === 'ui_boon_icons'), f = a.frames[id] || 0;
+        const AS = window.ART_MANIFEST.assets, a1 = AS.find(x => x.key === 'ui_boon_icons'), a2 = AS.find(x => x.key === 'ui_boon_icons2');
+        const a = a1.frames[id] === undefined && a2 && a2.frames[id] !== undefined ? a2 : a1, f = a.frames[id] || 0;
         el.dataset.id = id; el.classList.remove('hidden');
         el.style.backgroundImage = `url(assets/art/${a.path})`;
-        el.style.backgroundSize = `${a.imgW * 2}px ${a.imgH * 2}px`;
+        el.style.backgroundSize = `${(a.imgW || a.frameCount * 16) * 2}px ${(a.imgH || 16) * 2}px`;
         el.style.backgroundPosition = `${-f * 32}px 0`;
         el.title = t('ui_boon_active', { N: t('boon_' + id + '_name') });
       },

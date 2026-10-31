@@ -77,6 +77,12 @@
     tick() { tone('square', 1568, 1568, 0.025, 0.04); },
     whine() { tone('triangle', 900, 650, 0.35, 0.08); },
     rustle() { noise(0.25, 0.12, 'bandpass', 3000); },
+    splash() { noise(0.35, 0.3, 'lowpass', 1100); tone('sine', 340, 90, 0.22, 0.12); },
+    moo() { tone('sawtooth', 150, 118, 0.7, 0.12); tone('sawtooth', 152, 112, 0.7, 0.08, 0.02); },
+    caw() { tone('sawtooth', 640, 420, 0.12, 0.07); tone('sawtooth', 600, 380, 0.12, 0.06, 0.16); },
+    bell() { [2093, 2093].forEach((f, i) => tone('triangle', f, f * 0.995, 0.3, 0.09, i * 0.18)); },
+    quack() { tone('square', 700, 420, 0.09, 0.06); },
+    burp() { tone('sawtooth', 120, 70, 0.45, 0.14); noise(0.3, 0.06, 'lowpass', 300); },
     cheer() { [659, 784, 988, 1319].forEach((f, i) => tone('triangle', f, f, 0.1, 0.09, i * 0.06)); },
   };
 

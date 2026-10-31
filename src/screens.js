@@ -94,22 +94,37 @@
   // =====================================================================================
   // Kiosk
   // =====================================================================================
-  const K = { sel: null };
+  const K = { sel: null, page: 0 };
+  // an upgrade's icon: arc-2 items live on ui_upgrade_icons2
+  function upIcon(id, i, x, y, o) {
+    if (A.ui_upgrade_icons.frames[id] === undefined && A.ui_upgrade_icons2 && A.ui_upgrade_icons2.frames[id] !== undefined) return sp('ui_upgrade_icons2', A.ui_upgrade_icons2.frames[id], x, y, o);
+    return sp('ui_upgrade_icons', A.ui_upgrade_icons.frames[id] !== undefined ? A.ui_upgrade_icons.frames[id] : i, x, y, o);
+  }
+  function boonIcon(id, x, y, o) {
+    if (A.ui_boon_icons.frames[id] === undefined && A.ui_boon_icons2 && A.ui_boon_icons2.frames[id] !== undefined) return sp('ui_boon_icons2', A.ui_boon_icons2.frames[id], x, y, o);
+    return sp('ui_boon_icons', A.ui_boon_icons.frames[id] || 0, x, y, o);
+  }
   function kiosk(say) {
     const S = SAVE.data, L = A.kiosk_bg.layout, owner = I18N.owner();
     const levelOf = u => S.upgrades[u.id] || 0;
-    if (K.sel === null || !UPG[K.sel]) { K.sel = Math.max(0, UPG.findIndex(u => u.levels[levelOf(u)])); }
-    const [ox, oy] = L.slots_origin, [dx, dy] = L.slot_step, cols = L.slot_cols;
+    const [ox, oy] = L.slots_origin, [dx, dy] = L.slot_step, cols = L.slot_cols, per = cols * 2;
+    // page 2 ('Fluss-Kram') opens with arc 2; the river items only show there
+    const pages = S.unlocked >= 6 && UPG.length > per ? Math.ceil(UPG.length / per) : 1;
+    const visible = i => pages > 1 || i < per;
+    if (K.sel === null || !UPG[K.sel] || !visible(K.sel)) { K.sel = Math.max(0, UPG.findIndex((u, i) => visible(i) && u.levels[levelOf(u)])); }
+    K.page = Math.floor(K.sel / per);
     const slots = UPG.map((u, i) => {
+      if (Math.floor(i / per) !== K.page) return '';
+      const j = i % per;
       const lv = levelOf(u), nxt = u.levels[lv], maxed = !nxt, short = nxt && S.bank < nxt.price;
       const state = maxed ? 'owned' : i === K.sel ? 'selected' : short ? 'locked' : 'available';
-      const x = ox + (i % cols) * dx, y = oy + Math.floor(i / cols) * dy;
+      const x = ox + (j % cols) * dx, y = oy + Math.floor(j / cols) * dy;
       const pips = u.levels.map((_, k) => sp('kiosk_pips', k < lv ? 1 : k === lv ? 2 : 0, 20 - (u.levels.length * 7 - 1) / 2 + k * 7, 23)).join('');
       const tag = maxed ? 'sold_out' : short ? 'short' : 'ok';
       const tagText = maxed ? t('kiosk_sold_out') : nxt.price;
       const badge = maxed ? sp('ui_badges', 1, 30, -4) : short ? sp('ui_badges', 0, 30, -4) : '';
       const inner = sp('kiosk_slot', A.kiosk_slot.frames[state], 0, 0)
-        + sp('ui_upgrade_icons', A.ui_upgrade_icons.frames[u.id] || i, 12, 5, { style: state === 'locked' ? 'opacity:.5' : '' })
+        + upIcon(u.id, i, 12, 5, { style: state === 'locked' ? 'opacity:.5' : '' })
         + pips + sp('kiosk_price_tag', A.kiosk_price_tag.frames[tag], 2, 35)
         + `<span class="ptxt silk ${tag}" data-fit="${maxed ? 32 : 22}" style="left:${maxed ? 4 : 14}px;top:37px;width:${maxed ? 32 : 22}px">${esc(tagText)}</span>`
         + badge + `<i class="kaching" id="kaching-${i}"></i>`;
@@ -119,7 +134,7 @@
     const u = UPG[K.sel], lv = levelOf(u), nxt = u.levels[lv], short = nxt && S.bank < nxt.price;
     const [px, py, pw, ph] = L.detail_panel, [bx, by] = L.buy_button;
     const detail = nine('panel_dialogue', px, py, pw, ph)
-      + sp('ui_upgrade_icons', A.ui_upgrade_icons.frames[u.id] || K.sel, px + 8, py + 8)
+      + upIcon(u.id, K.sel, px + 8, py + 8)
       + `<span class="ptxt pix big" style="left:${px + 28}px;top:${py + 6}px;width:${pw - 34}px">${esc(t(u.name_key))}</span>`
       + `<span class="ptxt silk dim" style="left:${px + 28}px;top:${py + 20}px">${esc(t('kiosk_level', { N: lv + '/' + u.levels.length }))}</span>`
       + `<span class="ptxt pix desc" style="left:${px + 8}px;top:${py + 32}px;width:${pw - 16}px">${esc(t(u.desc_key))}</span>`
@@ -144,6 +159,7 @@
       + (say === 'kiosk_bought' ? `<span class="ptxt silk dogsay" id="k-dogsay" style="left:${kx - 50}px;top:${L.counter_overlay_y - 17}px">${esc(t('dog_buy'))}</span>` : '')
       + `<span class="ptxt pix title" style="left:${L.title[0]}px;top:${L.title[1]}px">${esc(t('kiosk_name'))}</span>` + bank(S.bank)
       + slots + detail + dialogue
+      + (pages > 1 ? btn('data-a="kpage"', ox, oy + 2 * dy - 2, 2 * dx + 40, 14, `<span class="c" style="width:${2 * dx + 40}px;height:14px">${nine('panel_dialogue', 0, 0, 2 * dx + 40, 14)}<span class="ptxt silk lbl" style="left:0;top:3px;width:${2 * dx + 40}px">${esc((K.page ? '◀ ' : '') + t(K.page ? 'ui_kiosk_page1' : 'ui_kiosk_page2') + (K.page ? '' : ' ▶'))}</span></span>`, t(K.page ? 'ui_kiosk_page1' : 'ui_kiosk_page2')) : '')
       + thumb('back', 'normal', L.leave_button[0], L.leave_button[1], 'data-a="leave"', t('kiosk_leave'));
     const d = stage('kiosk2', html, '#2a1c16');
     const npc = d.querySelector('#k-npc'), por = d.querySelector('#k-portrait');
@@ -153,6 +169,7 @@
     if (say === 'kiosk_bought') setTimeout(() => { const g = d.querySelector('#k-dog'), b = d.querySelector('#k-dogsay'); if (g && g.isConnected) play(g, 'wurst_sit'); if (b) b.remove(); }, 1500);
 
     onTap(d, '[data-u]', el => { const i = +el.dataset.u; if (i === K.sel) return; SFX.play('click'); K.sel = i; kiosk(); });
+    onTap(d, '[data-a=kpage]', () => { SFX.play('click'); const np = (K.page + 1) % pages; K.sel = np * per; kiosk(); });
     onTap(d, '[data-a=leave]', () => { SFX.play('click'); K.sel = null; UI.map(); });
     onTap(d, '[data-a=buy]', () => {
       const u2 = UPG[K.sel], lv2 = levelOf(u2), n2 = u2.levels[lv2];
@@ -170,36 +187,46 @@
   // =====================================================================================
   // Mission map
   // =====================================================================================
-  const M = { sel: null };
+  const M = { sel: null, page: 0 };
+  // page 1 = the village (missions 1-5), page 2 = 'Ab nach Soest' (6-10, once mission 5 is beaten)
   function map() {
-    const S = SAVE.data, bg = A.map_bg, nodes = bg.nodes, B = bg.buttons;
-    const unlocked = Math.min(LEVELS.length, S.unlocked);
+    const S = SAVE.data;
+    const unlocked = Math.min(LEVELS.length, S.unlocked), has2 = !!A.map_bg_arc2 && LEVELS.length >= 6 && unlocked >= 6;
+    const prog = S.unlocked + '|' + S.cleared.filter(Boolean).length + '|' + ((window.GAMEFLOW && GAMEFLOW.winSeq) || 0);
+    if (M.unl !== prog) { M.unl = prog; M.sel = null; }   // progress changed (new mission open / one cleared): jump to the first open one
     if (!M.sel || M.sel > unlocked) { const firstOpen = LEVELS.findIndex((_, i) => i < unlocked && !S.cleared[i]); M.sel = firstOpen >= 0 ? firstOpen + 1 : unlocked; }
-    const NF = A.map_nodes.frames;
+    if (!has2 && M.sel > 5) M.sel = Math.min(5, unlocked);
+    const page = has2 && M.sel > 5 ? 2 : 1, n0 = page === 2 ? 6 : 1, n1 = page === 2 ? 10 : Math.min(5, LEVELS.length);   // arc-2 nodes not built yet show locked
+    M.page = page;
+    const bg = page === 2 ? A.map_bg_arc2 : A.map_bg, nodes = bg.nodes, B = bg.buttons, nkey = page === 2 ? 'map_nodes_arc2' : 'map_nodes', bgKey = page === 2 ? 'map_bg_arc2' : 'map_bg';
+    const NF = A[nkey].frames;
     // path dots: lit when the mission at the end of the segment is unlocked
     let dots = '';
     for (const seg in bg.pathDots) {
-      const end = seg.split('-')[1], n = /^l(\d)$/.test(end) ? +end.slice(1) : 0;
+      const end = seg.split('-')[1], n = /^l(\d+)$/.test(end) ? +end.slice(1) : 0;
       const lit = end === 'kiosk' || n <= unlocked;
       bg.pathDots[seg].forEach(([x, y]) => { dots += sp('map_path_dot', lit ? 1 : 0, x - 2, y - 2); });
     }
     let ns = '';
-    for (let n = 1; n <= LEVELS.length; n++) {
-      const id = 'l' + n, [cx, cy] = nodes[id], f = NF[id];
+    for (let n = n0; n <= n1; n++) {
+      const id = 'l' + n; if (!nodes[id] || !NF[id]) continue;
+      const [cx, cy] = nodes[id], f = NF[id];
       const locked = n > unlocked, cleared = !!S.cleared[n - 1], cur = n === M.sel;
       const frame = locked ? f.locked : cur ? f.current_a : cleared ? f.cleared : f.open;
       ns += btn(`data-l="${n}" data-state="${locked ? 'locked' : 'open'}" ${locked ? 'aria-disabled="true"' : ''}`, cx - 12, cy - 12, 24, 24,
-        sp('map_nodes', frame, 0, 0, { cls: 'c', anim: cur && !locked ? `map_node_${id}_current` : '' }), locked ? t('ui_locked') : t(LEVELS[n - 1].title_key));
+        sp(nkey, frame, 0, 0, { cls: 'c', anim: cur && !locked ? `map_node_${id}_current` : '' }), locked ? t('ui_locked') : t(LEVELS[n - 1].title_key));
     }
-    const [kx, ky] = nodes.kiosk;
-    ns += btn('data-a="kiosk-node"', kx - 12, ky - 12, 24, 24, sp('map_nodes', NF.kiosk.open, 0, 0, { cls: 'c' }), t('kiosk_name'));
+    if (nodes.kiosk) { const [kx, ky] = nodes.kiosk; ns += btn('data-a="kiosk-node"', kx - 12, ky - 12, 24, 24, sp('map_nodes', A.map_nodes.frames.kiosk.open, 0, 0, { cls: 'c' }), t('kiosk_name')); }
+    // arc switch
+    const pl = page === 2 ? '◀ ' + t('ui_arc1') : t('ui_arc2') + ' ▶', pw = 112;
+    if (has2) ns += btn(`data-a="page"`, 192 - pw / 2, 182, pw, 24, `<span class="c" style="width:${pw}px;height:24px">${nine('panel_dialogue', 0, 0, pw, 24, page === 1 ? 'filter:hue-rotate(-20deg) saturate(1.6) brightness(1.15)' : '')}<span class="ptxt pix lbl" style="left:0;top:7px;width:${pw}px">${esc(pl)}</span></span>`, pl);
     // hero pin above the selected node + the name plate under it
     const [sx, sy] = nodes['l' + M.sel];
     const pin = sp('map_hero_marker', 0, sx - 8, sy - 10 - 21, { id: 'm-pin', anim: 'map_hero_bob' });
     const dog = sp('npc_wurst', 0, sx + 5, sy - 27, { id: 'm-dog', anim: 'wurst_sit' });
     const title = t(LEVELS[M.sel - 1].title_key);
     const label = `<div class="plabel" id="m-label" style="top:${sy + 14}px;--cx:${sx}px"><span class="ptxt pix ink">${esc(title)}</span></div>`;
-    const html = sp('map_bg', 0, 0, 0) + dots + ns + dog + pin + label
+    const html = sp(bgKey, 0, 0, 0) + dots + ns + dog + pin + label
       + `<span class="ptxt pix title" style="left:6px;top:4px">${esc(t('ui_missions'))}</span>` + bank(S.bank)
       + thumb('back', 'normal', B.back[0], B.back[1], 'data-a="back"', t('ui_back'))
       + thumb('kiosk', 'normal', B.kiosk[0], B.kiosk[1], 'data-a="kiosk"', t('ui_kiosk'))
@@ -219,6 +246,12 @@
       SFX.play('click');
       if (n === M.sel) { UI.levelCard(n); return; }
       M.sel = n; map();
+    });
+    onTap(d, '[data-a=page]', () => {
+      SFX.play('click');
+      if (page === 1) { const f = LEVELS.findIndex((_, i) => i >= 5 && i < unlocked && !S.cleared[i]); M.sel = f >= 0 ? f + 1 : Math.min(10, unlocked); }
+      else { const f = LEVELS.findIndex((_, i) => i < 5 && !S.cleared[i]); M.sel = f >= 0 ? f + 1 : 5; }
+      map();
     });
     onTap(d, '[data-a=kiosk], [data-a=kiosk-node]', () => { SFX.play('click'); UI.kiosk(); });
     onTap(d, '[data-a=back]', () => { SFX.play('click'); UI.title(); });
@@ -240,7 +273,7 @@
       const state = st.taken >= 0 ? (i === st.taken ? 'owned' : 'locked') : i === st.sel ? 'selected' : 'available';
       const x = cx0 + i * 84 - 20, y = py + 8;
       const inner = sp('kiosk_slot', A.kiosk_slot.frames[state], 0, 0)
-        + sp('ui_boon_icons', A.ui_boon_icons.frames[b.id] || 0, 12, 12, { style: state === 'locked' ? 'opacity:.45' : '' })
+        + boonIcon(b.id, 12, 12, { style: state === 'locked' ? 'opacity:.45' : '' })
         + (i === st.taken ? sp('ui_badges', A.ui_badges.frames.check, 30, -4) : '');
       return btn(`data-b="${i}" ${st.taken >= 0 ? 'disabled' : ''}`, x, y, 40, 48, `<span class="c" style="width:40px;height:48px">${inner}</span>`, t('boon_' + b.id + '_name'))
         + `<span class="ptxt silk tname ${i === st.sel || i === st.taken ? 'on' : ''}" style="left:${x - 18}px;top:${y + 51}px;width:76px">${esc(t('boon_' + b.id + '_name'))}</span>`;
