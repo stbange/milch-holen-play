@@ -116,6 +116,7 @@ html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden; 
 /* ending */
 .ending { text-align: center; max-width: 720px; font-size: 22px; line-height: 1.4; text-shadow: 2px 2px 0 var(--ink); }
 .ending .big { font-size: 40px; color: var(--glow); }
+.ending .tease { font-size: 18px; color: var(--plaster); margin-top: 6px; }
 .ending .ded { color: var(--orange); font-size: 26px; white-space: pre-line; }
 .credits { font-size: 15px; color: var(--plaster-sh); margin-top: 10px; line-height: 1.5; }
 /* rotate prompt */

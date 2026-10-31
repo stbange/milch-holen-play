@@ -92,7 +92,8 @@
     // arc 2: Wurst is drawn in the vehicle sheets (on the SUP nose / in the bike basket); only his bubble lives here
     if (sc.vehicle || sc.cutscene) {
       d.spr.setVisible(false); d.ride = true;
-      d.x = h.x + (sc.vehicle === 'sup' ? 20 : -16); d.y = h.y - 10;
+      const tr = sc.vehicle === 'bike' && sc.trailer && sc.trailer.dog.visible ? sc.trailer.dog : null;   // arc 2 bike: Wurst rides the SUP trailer
+      if (tr) { d.x = tr.x; d.y = Math.min(tr.y, h.y) - 4; } else { d.x = h.x + (sc.vehicle === 'sup' ? 20 : -16); d.y = h.y - 10; }
       if (sc.ended && !sc.dead && d.state !== 'happy') { d.state = 'happy'; say(sc, 'dog_win', 2600, true); }
       if (sc.dead && d.state !== 'sad') { d.state = 'sad'; if (Math.random() < 0.7) say(sc, 'dog_sad', 2000, true); }
       if (d.bubble) { if (sc.time0 > d.bubble.until) kill(d); else placeBubble(sc, d); }

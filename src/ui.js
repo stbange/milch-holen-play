@@ -161,7 +161,8 @@
           tapAnywhere(d, () => show(i + 1), minS);
           return;
         }
-        const d = screen(`<div class="ending"><p class="big">${esc(t('ending_the_end'))}</p><p class="credits" style="white-space:pre-line">${esc(t('credits'))}</p>
+        // end of arc 1 (mission 5) = end of stage 1 + teaser; the real "ENDE" is only after mission 10 (ending2)
+        const d = screen(`<div class="ending"><p class="big">${esc(t('ending_stage1_end'))}</p><p class="tease">${esc(t('ending_stage1_tease'))}</p><p class="credits" style="white-space:pre-line">${esc(t('credits'))}</p>
           <div class="row"><button class="btn primary" data-a="map">${esc(t('ui_play_again'))}</button></div></div>`, 'dim');
         on(d, '[data-a=map]', onDone);
       };

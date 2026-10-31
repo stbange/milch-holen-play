@@ -26,7 +26,7 @@
     this.vehicle = this.water ? 'sup' : 'bike';
     this.currents = (L.hazards || []).filter(h => h.type === 'current').map(h => ({ x: h.x * TILE, s: h.speed })).sort((a, b) => a.x - b.x);
     this.a2o = { obst: [], overs: [], weirs: [], locks: [], threats: [] };
-    this.heroSX = W.hero_screen_x; this.lockOn = null; this.cutscene = null;
+    this.heroSX = W.hero_screen_x; this.lockOn = null; this.cutscene = null; this.trailer = null;   // the scene object is reused between levels
     this.dockX = L.dock_x ? L.dock_x * TILE : null;
     this.barkCd = 0; this.dogCd = 4; this.grp = null;
   };
@@ -284,14 +284,16 @@
     const h = this.hero;
     this.cutscene = { t: 0, taps: 0, done: false };
     h.duck = 0; h.vy = 0; h.y = GY; h.grounded = true; h.spr.setVisible(false); this.objs.bullets.forEach(b => b.spr.destroy()); this.objs.bullets = [];
-    this.uf = this.add.sprite(this.dockX + 20, GY, 'fx_unfold', 0).setOrigin(0.5, 47 / 48).setDepth(25);
-    this.ufBoard = this.add.image(this.dockX - 30, GY + 3, 'hero_sup', 0).setOrigin(0.5, 43 / 48).setDepth(12).setVisible(false);
+    // wide frame (128 px): the SUP flips onto its little wheels and hitches to the bike's rear axle; origin = hero centre in the bike half
+    this.uf = this.add.sprite(this.dockX + 20, GY, 'fx_unfold', 0).setOrigin(96 / 128, 47 / 48).setDepth(25);
     UI.hud.toast(t('a2_unfold'), 2600); SFX.play('item');
   };
   P.unfoldTap = function () {
     const c = this.cutscene; if (!c || c.done) return;
     c.taps++; SFX.play('clang'); this.shake(1, 60);
-    this.uf.setFrame(Math.min(5, c.taps * 2 - 1)); this.spark(this.uf.x + 6, GY - 14);
+    const f = Math.min(5, c.taps * 2 - 1); this.uf.setFrame(f);
+    this.spark(f >= 3 ? this.uf.x - 14 : this.uf.x + 6, f >= 3 ? GY - 8 : GY - 14);   // tap 2 = the hitch clicks onto the axle
+    if (f === 3) SFX.play('wuff');
     if (c.taps >= UF.taps && c.t >= UF.min_s) this.finishUnfold();
   };
   P.updateUnfold = function (dt) {
@@ -311,6 +313,7 @@
       this.water = false; this.vehicle = 'bike';
       h.x = this.dockX + 20; h.y = GY; h.vx = 40; h.grounded = true; h.spr.setVisible(true);
       h.spr.setTexture('hero_bike', 0).setOrigin(0.5, 47 / 48); h.anim = ''; h.lastGround = h.x;
+      const T2 = this.a2TrailerMake(); T2.wy = h.y;
       this.camX = this.cameras.main.scrollX;
       UI.hud.toast(t('a2_unfold_done'), 1600);
     });
@@ -630,7 +633,7 @@
   // ------------------------------------------------------------------ hero drawing
   P.a2DrawHero = function (dt) {
     const h = this.hero, s = h.spr, sup = this.vehicle === 'sup';
-    if (this.cutscene) return;
+    if (this.cutscene) { this.a2TrailerUpdate(dt); return; }
     let anim;
     if (sup) {
       if (this.dead || h.kb > 0) anim = 'sup_hurt';
@@ -654,6 +657,108 @@
     s.setScale(1, !sup && h.duck > 0 ? 0.8 : 1);
     s.setVisible(!(h.sunk > 0));
     s.setAlpha(h.inv > 0 && !this.dead ? (Math.floor(h.inv * PL.blink_hz * 2) % 2 ? 0.35 : 1) : 1);
+    if (!sup) { if (!this.trailer) this.a2TrailerMake(); this.a2TrailerUpdate(dt); }
+  };
+
+  // ------------------------------------------------------------------ the SUP as a bike trailer, Wurst riding on it
+  // Pure decoration: nothing here touches the hero's hitbox, physics, lives or the enemies. Coupler = the
+  // bike's rear axle (hero x - 14, hero y - 8); the tail wheels follow the floor 54 px behind and lag in
+  // jumps (so the board tilts). Wurst sits on the deck, bounces on landings, barks at monsters ahead
+  // and now and then hops off, chases the trailer and jumps back on.
+  const TR_LEN = 54, DOG_LX = -35, DOG_LY = -3, DOG_G = 900, TR_MAX = 0.35;
+  P.a2TrailerMake = function () {
+    if (this.trailer) return this.trailer;
+    const h = this.hero;
+    const spr = this.add.sprite(Math.round(h.x - 14), Math.round(h.y - 8), 'bike_trailer', 0).setOrigin(63 / 64, 15 / 24).setDepth(23);
+    spr.play('trailer_roll');
+    const dog = this.add.sprite(Math.round(h.x - 49), Math.round(h.y - 11), 'npc_wurst_trailer', 0).setOrigin(0.5, 1).setDepth(23.5);
+    dog.play('wurstv_ride');
+    this.trailer = { spr, dog, wy: h.y, rot: 0, dy: 0, dvy: 0, flip: 0, spin: 0, state: 'ride', st: 0, anim: 'wurstv_ride', hopCd: 10 + Math.random() * 8,
+      lineCd: 9 + Math.random() * 6, barked: new Set(), wasG: true, airVy: 0, ox: 0, oy: 0, ovx: 0, ovy: 0, og: false, gag: 0 };
+    return this.trailer;
+  };
+  P.a2TrailerSlot = function () {   // world position of Wurst's seat on the deck
+    const T2 = this.trailer, s = this.hero.spr, hx = s.x - 14, hy = s.y - 8, c = Math.cos(T2.rot), sn = Math.sin(T2.rot);
+    return { x: hx + DOG_LX * c - DOG_LY * sn, y: hy + DOG_LX * sn + DOG_LY * c };
+  };
+  P.a2TrailerUpdate = function (dt) {
+    const T2 = this.trailer; if (!T2) return;
+    const h = this.hero, s = h.spr, show = this.vehicle === 'bike' && !this.cutscene && s.visible;
+    T2.spr.setVisible(show); T2.dog.setVisible(show);
+    if (!show) return;
+    // --- the board: coupler on the rear axle, tail wheels on the floor behind (lagging in the air)
+    const hx = s.x - 14, hy = s.y - 8;
+    let want = h.y;
+    if (h.grounded) { const f = this.floorBelow(h.x - 14 - TR_LEN, h.y - 10); if (isFinite(f) && Math.abs(f - h.y) <= 14) want = f; }
+    T2.wy = clamp(approach(T2.wy, want, 240 * dt), h.y - TR_MAX * TR_LEN, h.y + TR_MAX * TR_LEN);
+    let rot = -(T2.wy - h.y) / TR_LEN; if (Math.abs(rot) < 0.04) rot = 0;
+    T2.rot = rot;
+    T2.spr.setPosition(hx, hy).setRotation(rot);
+    T2.spr.anims.timeScale = clamp(Math.abs(h.vx) / BK.run_speed, 0, 1.4);
+    // --- Wurst
+    const moving = Math.abs(h.vx) > 20 && h.grounded;
+    T2.hopCd -= dt; T2.lineCd -= dt; if (T2.st > 0) T2.st -= dt;
+    if (!h.grounded) T2.airVy = h.vy;
+    if (h.grounded && !T2.wasG && T2.state !== 'off' && T2.dy >= 0) T2.dvy = -clamp(T2.airVy * 0.3, 40, 170);   // landing bump
+    T2.wasG = h.grounded;
+    let anim = null;
+    if (this.dead) { T2.state = 'ride'; anim = 'wurstv_sad'; }
+    else if (this.ended) { if (T2.state === 'off') this.a2TrailerReboard(); anim = T2.dy < -1 ? 'wurstv_jump' : 'wurstv_happy'; if (T2.dy >= 0 && T2.dvy === 0 && Math.random() < dt * 2.5) T2.dvy = -150; }
+    else if (T2.state === 'off') anim = this.a2TrailerOff(dt);
+    else {
+      // bark at a monster coming up ahead (once per monster)
+      const cam = this.cameras.main, e = this.objs.enemies.find(q => q.alive && q.spr && q.spr.visible && !T2.barked.has(q) && q.x > h.x + 20 && q.x - h.x < 170 && q.x < cam.scrollX + this.viewW);
+      if (e) { T2.barked.add(e); T2.state = 'bark'; T2.st = 0.55; SFX.play('wuff'); if (Math.random() < 0.4 && this.dogCd <= 0) { this.dogCd = 6; DOG.say(this, Math.random() < 0.5 ? 'dog_wuff_2' : 'dog_a2_bark', 900); } }
+      if (T2.state === 'bark' && T2.st <= 0) T2.state = 'ride';
+      // calm stretch: a gag now and then
+      const calm = moving && !this.boss && !this.lockOn && h.vx > BK.run_speed * 0.6 && !this.objs.enemies.some(q => q.alive && Math.abs(q.x - h.x) < 230);
+      if (T2.state === 'ride' && T2.hopCd <= 0 && T2.dy >= 0) {
+        if (calm && this.a2TrailerFlat(h.x - 90, h.x + 120)) { T2.hopCd = 14 + Math.random() * 12; this.a2TrailerHopOff(); }
+        else if (moving && T2.gag++ % 2 === 0) { T2.hopCd = 12 + Math.random() * 10; T2.dvy = -230; T2.spin = 1; DOG.say(this, 'dog_a2_hop', 1100); }
+        else T2.hopCd = 3;
+      }
+      if (T2.lineCd <= 0 && moving && T2.state === 'ride' && this.dogCd <= 0) { T2.lineCd = 16 + Math.random() * 12; this.dogCd = 5; DOG.say(this, Math.random() < 0.5 ? 'dog_a2_wind' : 'dog_a2_ride', 1300); }
+      if (T2.state !== 'off') anim = T2.state === 'bark' ? 'wurstv_bark' : T2.dy < -1 ? 'wurstv_jump' : moving ? 'wurstv_ride' : 'wurstv_idle';
+    }
+    if (T2.state !== 'off') {   // riding: hop physics relative to the deck
+      if (T2.dvy !== 0 || T2.dy < 0) { T2.dvy += DOG_G * dt; T2.dy += T2.dvy * dt; if (T2.dy >= 0) { T2.dy = 0; T2.dvy = 0; T2.spin = 0; } }
+      const p = this.a2TrailerSlot(), bob = moving && T2.dy >= 0 && anim === 'wurstv_ride' && Math.floor(this.time0 * 8) % 2 ? -1 : 0;
+      T2.dog.setPosition(Math.round(p.x), Math.round(p.y + T2.dy + bob));
+      T2.dog.setRotation(T2.spin && T2.dy < 0 ? rot - Math.PI * 2 * clamp(-T2.dy / 26, 0, 1) * (T2.dvy > 0 ? 1 : 0.5) : rot);
+    }
+    if (anim && T2.anim !== anim) { T2.anim = anim; T2.dog.play(anim); }
+    T2.dog.anims.timeScale = anim === 'wurstv_ride' ? clamp(Math.abs(h.vx) / BK.run_speed, 0.5, 1.5) : 1;
+  };
+  P.a2TrailerFlat = function (x0, x1) {   // plain floor at hero height all along (no pits, steps or crates) -> safe for the hop-off gag
+    const y = this.hero.y;
+    for (let x = x0; x <= x1; x += 8) { const f = this.floorBelow(x, y - 10); if (!isFinite(f) || Math.abs(f - y) > 1) return false; }
+    return true;
+  };
+  P.a2TrailerHopOff = function () {
+    const T2 = this.trailer, p = this.a2TrailerSlot(), h = this.hero;
+    T2.state = 'off'; T2.st = 0; T2.ox = p.x; T2.oy = p.y; T2.ovx = h.vx - 70; T2.ovy = -200; T2.og = false; T2.phase = 'jump';
+    T2.dog.setRotation(0); SFX.play('wuff');
+  };
+  P.a2TrailerReboard = function () {
+    const T2 = this.trailer; T2.state = 'ride'; T2.dy = 0; T2.dvy = 0; T2.spin = 0;
+    const p = this.a2TrailerSlot(); this.spark(p.x, p.y - 6);
+  };
+  P.a2TrailerOff = function (dt) {   // off the trailer: land behind it, sprint, jump back on
+    const T2 = this.trailer, h = this.hero, p = this.a2TrailerSlot();
+    T2.st += dt;
+    if (T2.st > 5 || Math.abs(T2.ox - p.x) > 200 || this.boss || this.lockOn) { this.a2TrailerReboard(); return 'wurstv_ride'; }
+    if (T2.phase === 'run' && T2.ox >= p.x - 18) { T2.phase = 'back'; T2.ovy = -230; T2.og = false; SFX.play('wuff'); DOG.say(this, 'dog_a2_hop', 1000); }
+    if (T2.phase === 'run') T2.ovx = Math.min(h.vx + 70, 260);
+    if (T2.phase === 'back') T2.ovx = h.vx + clamp((p.x - T2.ox) * 4, -60, 120);
+    T2.ox += T2.ovx * dt;
+    if (!T2.og) { T2.ovy += DOG_G * dt; T2.oy += T2.ovy * dt; }
+    if (T2.phase === 'back' && T2.ovy > 0 && T2.oy >= p.y - 1 && Math.abs(T2.ox - p.x) < 10) { this.a2TrailerReboard(); T2.dvy = -60; return 'wurstv_ride'; }
+    const fl = this.floorBelow(T2.ox, T2.oy - 8);
+    if (!T2.og && T2.ovy > 0 && isFinite(fl) && T2.oy >= fl) { T2.oy = fl; T2.og = true; T2.ovy = 0; if (T2.phase === 'jump') T2.phase = 'run'; }
+    if (T2.og && (!isFinite(fl) || fl > T2.oy + 2)) T2.og = false;
+    if (T2.oy > GY + 60) { this.a2TrailerReboard(); return 'wurstv_ride'; }
+    T2.dog.setPosition(Math.round(T2.ox), Math.round(T2.oy)).setRotation(0);
+    return T2.og ? 'wurstv_run' : 'wurstv_jump';
   };
 
   // ------------------------------------------------------------------ juice
