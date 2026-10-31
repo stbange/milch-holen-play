@@ -226,6 +226,74 @@
     return d;
   }
 
+  // =====================================================================================
+  // Kiosk-Tuete (spec §8b): after the first clear of missions 1-4, three boon cards in the kiosk-slot
+  // style. Tap a card to select it, tap it again (or Nehmen) to take it. The boon lasts for the next
+  // mission only. Yuppie cheers; Wurst tilts his head while you choose, spins when you take, whines on skip.
+  // =====================================================================================
+  function tuete(n, offer, st) {
+    st = st || { sel: -1, taken: -1, said: 'ui_tuete_pick' };
+    const S = SAVE.data, L = A.kiosk_bg.layout, owner = I18N.owner();
+    const [px, py, pw, ph] = [100, 22, 278, 116];
+    const cx0 = px + pw / 2 - 84;
+    const cards = offer.map((b, i) => {
+      const state = st.taken >= 0 ? (i === st.taken ? 'owned' : 'locked') : i === st.sel ? 'selected' : 'available';
+      const x = cx0 + i * 84 - 20, y = py + 8;
+      const inner = sp('kiosk_slot', A.kiosk_slot.frames[state], 0, 0)
+        + sp('ui_boon_icons', A.ui_boon_icons.frames[b.id] || 0, 12, 12, { style: state === 'locked' ? 'opacity:.45' : '' })
+        + (i === st.taken ? sp('ui_badges', A.ui_badges.frames.check, 30, -4) : '');
+      return btn(`data-b="${i}" ${st.taken >= 0 ? 'disabled' : ''}`, x, y, 40, 48, `<span class="c" style="width:40px;height:48px">${inner}</span>`, t('boon_' + b.id + '_name'))
+        + `<span class="ptxt silk tname ${i === st.sel || i === st.taken ? 'on' : ''}" style="left:${x - 18}px;top:${y + 51}px;width:76px">${esc(t('boon_' + b.id + '_name'))}</span>`;
+    }).join('');
+    const pick = st.taken >= 0 ? st.taken : st.sel;
+    const desc = pick >= 0 ? `<span class="ptxt pix desc" style="left:${px + 10}px;top:${py + 86}px;width:${pw - 20}px">${esc(t('boon_' + offer[pick].id + '_desc'))}</span>` : '';
+    const by = 141, canTake = st.sel >= 0 && st.taken < 0;
+    const pbtn = (a, x, w, label, frame) => btn(`data-a="${a}"`, x, by, w, 24,
+      `<span class="c" style="width:${w}px;height:24px">${nine('panel_dialogue', 0, 0, w, 24, frame === 'hot' ? 'filter:hue-rotate(-20deg) saturate(1.6) brightness(1.15)' : '')}<span class="ptxt pix lbl" style="left:0;top:7px;width:${w}px">${esc(label)}</span></span>`, label);
+    const buttons = (st.taken < 0 ? btn(`data-a="take" ${canTake ? '' : 'disabled'}`, px + 6, by, 64, 24,
+        sp('kiosk_buy_button', canTake ? 0 : 2, 0, 0, { cls: 'c' }) + `<span class="ptxt pix lbl" style="left:0;top:5px;width:64px">${esc(t('ui_tuete_take'))}</span>`, t('ui_tuete_take')) : '')
+      + pbtn('next', px + 80, 76, t('ui_next') + ' >', st.taken >= 0 ? 'hot' : '')
+      + pbtn('kiosk', px + 164, 110, t('ui_to_kiosk'));
+    const [dlx, dly, dlw, dlh] = L.dialogue_panel, [pfx, pfy] = L.portrait_frame;
+    const dialogue = nine('panel_dialogue', dlx, dly, dlw, dlh)
+      + sp('ui_portrait_frame', 0, pfx, pfy) + sp('npc_yuppie_portrait', st.taken >= 0 ? 2 : 0, pfx + 4, pfy + 4, { id: 't-portrait', anim: 'yuppie_portrait_talk' })
+      + `<span class="ptxt silk owner" style="left:${pfx + 42}px;top:${dly + 6}px">${esc(owner.toUpperCase())}</span>`
+      + `<span class="ptxt pix say" style="left:${pfx + 42}px;top:${dly + 17}px;width:${dlx + dlw - pfx - 50}px">${esc(t(st.said))}</span>`;
+    const [kx, ky] = L.yuppie || L.kalle;
+    const dogAnim = st.dog || (st.taken >= 0 ? 'wurst_happy' : 'wurst_tilt');
+    const html = sp('kiosk_bg', 0, 0, 0)
+      + sp('npc_yuppie', 0, kx - 16, ky - 48, { id: 't-npc', anim: st.taken >= 0 ? 'yuppie_cheer' : 'yuppie_wave' })
+      + sp('kiosk_counter', 0, 0, L.counter_overlay_y)
+      + sp('npc_wurst', 0, 4, 196 - 20, { id: 't-dog', anim: dogAnim })
+      + `<span class="ptxt pix title" style="left:${L.title[0]}px;top:${L.title[1]}px">${esc(t('ui_tuete_title'))}</span>` + bank(S.bank)
+      + nine('panel_dialogue', px, py, pw, ph) + cards + desc + buttons + dialogue;
+    const d = stage('tuete', html, '#2a1c16');
+    const npc = d.querySelector('#t-npc'), por = d.querySelector('#t-portrait'), dog = d.querySelector('#t-dog');
+    npc.dataset.then = 'yuppie_idle';
+    if (st.dog === 'wurst_spin') dog.dataset.then = 'wurst_happy';
+    setTimeout(() => { if (por.isConnected) { delete por.dataset.anim; setFrame(por, st.taken >= 0 ? 2 : 0); } }, 1400);
+    const take = i => {
+      const b = offer[i]; if (!b) return;
+      S.boon = { id: b.id, level: 0 }; SAVE.write(); SFX.play('cheer'); setTimeout(() => SFX.play('wuff'), 250);
+      tuete(n, offer, { sel: i, taken: i, said: 'ui_tuete_taken', dog: 'wurst_spin' });
+    };
+    let leaving = false;
+    const leave = fn => {
+      if (leaving) return; leaving = true;
+      if (st.taken < 0) { SFX.play('whine'); play(dog, 'wurst_whine'); setTimeout(fn, 700); } else fn();
+    };
+    onTap(d, '[data-b]', el => {
+      if (st.taken >= 0 || leaving) return;
+      const i = +el.dataset.b;
+      if (i === st.sel) { take(i); return; }
+      SFX.play('rustle'); tuete(n, offer, { sel: i, taken: -1, said: 'ui_tuete_pick' });
+    });
+    onTap(d, '[data-a=take]', () => { if (st.sel >= 0 && st.taken < 0 && !leaving) take(st.sel); });
+    onTap(d, '[data-a=next]', () => { SFX.play('click'); leave(() => GAMEFLOW.toMap()); });
+    onTap(d, '[data-a=kiosk]', () => { SFX.play('click'); leave(() => { GAMEFLOW.toMap(); UI.kiosk(); }); });
+    return d;
+  }
+
   // a dialogue portrait (ui_portrait_frame + face) for the text cards, at the game's pixel zoom.
   // talkMs > 0 plays the talk animation for that long, then holds `frame`.
   function portrait(key, frame, talkMs) {
@@ -242,6 +310,6 @@
     return `<span class="pdog ${cls || ''}" style="width:${24 * z}px;height:${20 * z}px"><span class="pstage-mini" style="width:24px;height:20px;transform:scale(${z})">${sp('npc_wurst', 0, 0, 0, { anim: anim || 'wurst_sit' })}</span></span>`;
   }
 
-  Object.assign(window.UI, { map, kiosk, portrait, dogSprite, layoutStage: layout });
+  Object.assign(window.UI, { map, kiosk, tuete, portrait, dogSprite, layoutStage: layout });
   window.addEventListener('resize', () => setTimeout(layout, 0));
 })();

@@ -188,3 +188,27 @@ html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden; 
 .card.note .note-dog { position: absolute; right: 18px; top: 0; transform: translateY(-62%); margin: 0; }
 .ending .dogline { color: var(--glow); font-size: 18px; }
 .pstage .ptxt.dogsay { background: var(--white); color: var(--ink); border: 1px solid var(--ink); padding: 1px 2px; font-size: 8px; line-height: 8px; white-space: nowrap; }
+
+/* ---- round 5: results strip, clear bonus, Kiosk-Tuete, boon HUD icon, brake lesson ---- */
+.wincard .results { display: flex; justify-content: center; gap: 18px; font-size: 18px; margin-top: 4px; }
+.wincard .bonuses { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; min-height: 0; }
+.wincard .bonus { font-size: 17px; color: var(--beam); opacity: .35; }
+.wincard .bonus.on { opacity: 1; color: var(--teal); text-shadow: 1px 1px 0 var(--ink); }
+.wincard .actions { justify-content: center; gap: 10px; margin-top: 8px; }
+.wincard .actions .btn { min-height: 64px; }
+.wincard p { margin: 4px 0; }
+.wincard .goal { margin-top: 6px; padding-top: 6px; }
+@media (max-height: 430px) { .wincard .pp-row { display: none; } .wincard h2 { margin-bottom: 2px; }
+  .wincard .milk { position: absolute; left: 14px; top: 10px; width: 40px; height: 40px; background-size: 40px 40px; }
+  .wincard .foot { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; border-top: 2px dashed var(--plaster-sh); margin-top: 6px; padding-top: 4px; }
+  .wincard .foot .goal { border-top: 0; margin: 0; padding-top: 0; }
+  .wincard .foot .actions { margin-top: 0; } }
+.pstage .ptxt.tname { text-align: center; color: var(--plaster); white-space: normal; line-height: 9px; }
+.pstage .ptxt.tname.on { color: var(--glow); }
+.tuete .pb[disabled] { opacity: 1; }
+#hud-boon { margin-top: 4px; width: 32px; height: 32px; image-rendering: pixelated; background-repeat: no-repeat; border: 2px solid var(--white); border-radius: 6px; background-color: rgba(26,20,38,.55); }
+#hud-boon.used { animation: pop .4s; }
+#brake-pulse { position: absolute; left: 0; top: 0; bottom: 0; width: 40%; pointer-events: none; opacity: 0;
+  background: linear-gradient(90deg, rgba(246,242,232,.38), rgba(246,242,232,0)); border-right: 3px dashed rgba(246,242,232,.7); }
+#brake-pulse.go { animation: brakepulse 1.2s ease-out; }
+@keyframes brakepulse { 0% { opacity: 0; } 20% { opacity: 1; } 45% { opacity: .35; } 65% { opacity: .9; } 100% { opacity: 0; } }

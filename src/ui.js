@@ -94,13 +94,46 @@
       on(d, '[data-a=map]', () => { clear(); onMap(); });
       tapAnywhere(d, () => { clear(); onRestart(); }, window.GAME_DATA.tuning.flow.restart_input_lock_s);
     },
-    win(n, bottles, unlockedNew, onNext) {
-      const L = LEVELS[n - 1];
-      const d = screen(`<div class="card" style="text-align:center"><h2>${esc(t('ui_level_clear'))}</h2>
+    // Level clear: results strip (Pfand, hits) + the clear bonus counting up (spec §8b), then
+    // [Weiter] (Kiosk-Tuete on a first clear, else the map) and [Zu Yuppies Kiosk].
+    win(n, bottles, unlockedNew, onNext, bonus, tuete) {
+      const L = LEVELS[n - 1], B = bonus || { noHit: 0, collect: 0, total: 0, hits: 0 };
+      const lines = [];
+      if (B.noHit) lines.push(['ui_bonus_no_hit', B.noHit]);
+      if (B.collect) lines.push(['ui_bonus_collect', B.collect]);
+      const kioskBtn = n < 5 && !tuete ? `<button class="btn" data-a="kiosk">${esc(t('ui_to_kiosk'))}</button>` : '';
+      const d = screen(`<div class="card wincard" style="text-align:center"><h2>${esc(t('ui_level_clear'))}</h2>
         <div class="pp-row">${UI.portrait('hero_portrait', 2, 1200)}${UI.dogSprite('wurst_happy')}</div>${n === 1 ? '<span class="milk"></span>' : ''}<p>${esc(t(L.card_after_key))}</p>
-        <p class="goal">${esc(t('ui_bottles_banked', { N: bottles }))} · ${bankHtml().replace('class="bank"', 'class="bank" style="display:inline-flex;color:var(--white)"')}</p>
-        <div class="tap">${esc(t('ui_continue'))} ▶</div></div>`, 'dim');
-      tapAnywhere(d, () => { clear(); onNext(); }, window.GAME_DATA.tuning.flow.card_min_show_s);
+        <div class="results"><span>${esc(t('ui_result_pfand', { N: bottles }))}</span><span>${esc(t('ui_result_hits', { N: B.hits }))}</span></div>
+        <div class="bonuses">${lines.map(([k], i) => `<span class="bonus" data-i="${i}">${esc(t(k, { N: 0 }))}</span>`).join('')}</div>
+        <div class="foot"><p class="goal"><span id="win-banked">${esc(t('ui_bottles_banked', { N: bottles }))}</span> · ${bankHtml().replace('class="bank"', 'class="bank" style="display:inline-flex;color:var(--white)"')}</p>
+        <div class="row actions"><button class="btn primary" data-a="next">${esc(t('ui_next'))} ▶</button>${kioskBtn}</div></div></div>`, 'dim');
+      // count-up: each bonus ticks from 0 to its value, the banked total follows; the bank already holds it
+      const bankEl = d.querySelector('.bank span'), banked = d.querySelector('#win-banked');
+      const bank1 = SAVE.data.bank; let shown = bottles;
+      if (bankEl) bankEl.textContent = bank1 - B.total;
+      let li = 0, v = 0;
+      const step = () => {
+        if (!d.isConnected || li >= lines.length) { if (d.isConnected && lines.length) SFX.play('cheer'); return; }
+        const [k, val] = lines[li], el = d.querySelector(`.bonus[data-i="${li}"]`);
+        v++; shown++; el.textContent = t(k, { N: v }); el.classList.add('on');
+        banked.textContent = t('ui_bottles_banked', { N: shown }); if (bankEl) bankEl.textContent = bank1 - B.total + (shown - bottles);
+        SFX.play('tick');
+        if (v >= val) { li++; v = 0; setTimeout(step, 260); } else setTimeout(step, 45);
+      };
+      setTimeout(step, 450);
+      let done = false;
+      const go = fn => { if (done) return; done = true; clear(); fn(); };
+      on(d, '[data-a=next]', () => go(onNext));
+      on(d, '[data-a=kiosk]', () => go(() => { GAMEFLOW.toMap(); UI.kiosk(); }));
+      tapAnywhere(d, () => go(onNext), window.GAME_DATA.tuning.flow.card_min_show_s);
+    },
+    // one-time brake lesson: the left (brake) touch zone pulses once, the first time a Wolfi tells
+    brakePulse() {
+      let el = $('brake-pulse');
+      if (!el) { el = document.createElement('div'); el.id = 'brake-pulse'; $('hud').appendChild(el); }
+      el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+      clearTimeout(UI._bpT); UI._bpT = setTimeout(() => el.classList.remove('go'), 1300);
     },
     // Ending: one card per tap, in the designer's order (spec: ending_1, ending_2, ending_anton,
     // ending_dedication, ending_the_end). config.js endingMessage replaces the dedication if set.
@@ -152,6 +185,19 @@
         const el = $('toast'); el.textContent = text; el.classList.remove('hidden', 'show'); void el.offsetWidth; el.classList.add('show');
         clearTimeout(UI._toastT); UI._toastT = setTimeout(() => el.classList.add('hidden'), ms || 2200);
       },
+      // the active Kiosk-Tuete boon (icon under the hearts); id null hides it
+      boon(id) {
+        const el = $('hud-boon'); if (!el) return;
+        if (!id) { el.classList.add('hidden'); el.removeAttribute('data-id'); return; }
+        if (el.dataset.id === id) return;
+        const a = window.ART_MANIFEST.assets.find(x => x.key === 'ui_boon_icons'), f = a.frames[id] || 0;
+        el.dataset.id = id; el.classList.remove('hidden');
+        el.style.backgroundImage = `url(assets/art/${a.path})`;
+        el.style.backgroundSize = `${a.imgW * 2}px ${a.imgH * 2}px`;
+        el.style.backgroundPosition = `${-f * 32}px 0`;
+        el.title = t('ui_boon_active', { N: t('boon_' + id + '_name') });
+      },
+      boonUsed(id) { const el = $('hud-boon'); if (el) { el.classList.remove('used'); void el.offsetWidth; el.classList.add('used'); } },
       warn(text) { const el = $('warn'); if (text) { el.textContent = text; el.classList.remove('hidden'); } else el.classList.add('hidden'); },
       sign(text) {
         const el = $('signbox');

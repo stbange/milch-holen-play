@@ -68,19 +68,47 @@
       UI.title(); SFX.music('menu');
     },
     startLevel(n, restart) {
+      // a Kiosk-Tuete boon binds to the next level started, survives retries of it, and is dropped
+      // when a different level is started (spec §8b)
+      const S = SAVE.data;
+      if (S.boon) {
+        if (!S.boon.level) { S.boon.level = n; SAVE.write(); }
+        else if (S.boon.level !== n) { S.boon = null; SAVE.write(); }
+      }
       UI.clear();
       game.scene.stop('Play');
       game.scene.start('Play', { level: n });
       SFX.music(n === 4 ? null : (n === 5 ? 'play' : 'play'));
     },
-    win(n, bottles) {
-      const S = SAVE.data, wasUnlocked = S.unlocked;
-      S.bank += bottles; S.cleared[n - 1] = true; S.unlocked = Math.max(S.unlocked, Math.min(5, n + 1)); SAVE.write();
+    // clear bonus (spec §8b): +no_hit when no heart was lost, +collect at >= collect_ratio of the level's bottles
+    clearBonus(n, st) {
+      const CB = window.GAME_DATA.tuning.clear_bonus, L = window.GAME_DATA.levels.levels[n - 1];
+      const total = (L.bottles && L.bottles.total) || 1, got = st ? st.collected : 0, hits = st ? st.hits : 0;
+      const noHit = hits === 0 ? CB.no_hit : 0, collect = got >= Math.ceil(total * CB.collect_ratio) ? CB.collect : 0;
+      return { noHit, collect, total: noHit + collect, hits, got, of: total };
+    },
+    // a random Kiosk-Tuete offer of tuning.boons.offer_count boons, honouring each boon's `requires`
+    tueteOffer() {
+      const BN = window.GAME_DATA.tuning.boons, U = SAVE.data.upgrades;
+      const ok = b => b.requires === 'magnet_below_2' ? (U.magnet || 0) < 2 : b.requires === 'knoedel_owned' ? (U.knoedel || 0) >= 1 : true;
+      const pool = BN.pool.filter(ok).slice();
+      for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+      return pool.slice(0, BN.offer_count);
+    },
+    win(n, bottles, stats) {
+      const S = SAVE.data, wasUnlocked = S.unlocked, BN = window.GAME_DATA.tuning.boons;
+      const bonus = GAMEFLOW.clearBonus(n, stats);
+      if (S.boon && S.boon.level === n) S.boon = null;             // used up: it lasted exactly this level
+      const tuete = !S.tuete[n - 1] && BN.offer_on_levels.indexOf(n) >= 0;
+      S.bank += bottles + bonus.total; S.cleared[n - 1] = true; S.tuete[n - 1] = true;
+      S.unlocked = Math.max(S.unlocked, Math.min(5, n + 1)); SAVE.write();
       UI.hud.show(false);
-      UI.win(n, bottles, S.unlocked > wasUnlocked, () => {
+      const next = () => {
         if (n === 5) { S.ending_seen = true; SAVE.write(); SFX.music('menu'); UI.ending(() => GAMEFLOW.toMap()); }
+        else if (tuete) UI.tuete(n, GAMEFLOW.tueteOffer());
         else GAMEFLOW.toMap();
-      });
+      };
+      UI.win(n, bottles, S.unlocked > wasUnlocked, next, bonus, tuete);
     },
     toMap() {
       UI.hud.show(false);

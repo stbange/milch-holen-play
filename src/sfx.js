@@ -66,6 +66,18 @@
     buy() { [660, 880, 1320].forEach((f, i) => tone('square', f, f, 0.08, 0.07, i * 0.06)); },
     nope() { tone('square', 200, 160, 0.16, 0.08); },
     pit() { tone('triangle', 600, 100, 0.5, 0.12); },
+    // round 5: tells, boons and the Kiosk-Tuete
+    growl() { tone('sawtooth', 110, 90, 0.32, 0.12); tone('sawtooth', 116, 96, 0.32, 0.08, 0.02); noise(0.3, 0.06, 'lowpass', 400); },
+    yap() { tone('square', 900, 600, 0.06, 0.12); tone('square', 1000, 700, 0.05, 0.1, 0.08); },
+    alert() { tone('square', 740, 740, 0.06, 0.07); tone('square', 988, 988, 0.08, 0.07, 0.07); },
+    creak() { tone('sawtooth', 180, 260, 0.25, 0.06); tone('sawtooth', 240, 170, 0.2, 0.05, 0.22); },
+    skid() { noise(0.35, 0.18, 'highpass', 2500); },
+    bonk() { tone('triangle', 300, 120, 0.12, 0.14); [1319, 1568, 1319].forEach((f, i) => tone('square', f, f, 0.05, 0.04, 0.12 + i * 0.07)); },
+    clang() { tone('square', 1200, 1150, 0.18, 0.08); tone('triangle', 2400, 2300, 0.25, 0.05); },
+    tick() { tone('square', 1568, 1568, 0.025, 0.04); },
+    whine() { tone('triangle', 900, 650, 0.35, 0.08); },
+    rustle() { noise(0.25, 0.12, 'bandpass', 3000); },
+    cheer() { [659, 784, 988, 1319].forEach((f, i) => tone('triangle', f, f, 0.1, 0.09, i * 0.06)); },
   };
 
   // ---- Tiny oompah ("Blasmusik") loop: tuba on 1, chord "pah" on 2 ----
