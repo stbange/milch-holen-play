@@ -139,7 +139,7 @@
     }
     for (const ev of q.splice(0)) {
       if (h.sunk > 0) continue;
-      if (ev.type === 'press') { if (h.grounded) this.a2Hop(); else h.hopBuf = 0.12; }
+      if (ev.type === 'press') { if (h.grounded) this.a2Hop(); else h.hopBuf = W.hop_buffer_s; }   // air tap: hop again on landing
       else if (ev.type === 'swipe' || ev.type === 'slam') {
         if (h.grounded) { h.duck = W.duck_s; SFX.play('throw'); }
         else { h.duckBuf = 0.3; h.vy = Math.max(h.vy, 140); }
@@ -189,8 +189,16 @@
     // weirs: automatic surf-hop off the lip
     for (const w of this.a2o.weirs) if (!w.done && h.x >= w.x) { w.done = true; if (h.grounded) this.a2Hop(W.surf_hop_mult); this.a2Splash(w.x + 10, GY + 4, 1.2); }
     if (h.inv > 0) return;
-    // logs / rocks: the board's feet must clear them
-    for (const o of this.a2o.obst) if (Math.abs(h.x - o.x) < (o.w + o.fw) / 2 && h.y > GY - o.h) { this.a2FallIn(o.kind); return; }
+    // logs / rocks: the board's feet must clear them. Coyote grace: a hop that starts within coyote_s
+    // of first touching the obstacle still counts as clearing it (a slightly late tap is forgiven).
+    for (const o of this.a2o.obst) {
+      if (o.cleared) continue;
+      const touch = Math.abs(h.x - o.x) < (o.w + o.fw) / 2 && h.y > GY - o.h;
+      if (!touch) { if (o.touchT) o.touchT = 0; continue; }
+      if (!o.touchT) o.touchT = this.time0;
+      if (h.lastJumpT >= o.touchT) { o.cleared = true; continue; }
+      if (this.time0 - o.touchT >= W.coyote_s) { o.touchT = 0; this.a2FallIn(o.kind); return; }
+    }
     // overhead: the standing (or hopping) hurtbox top hits the underside
     const top = h.y - HB_OFF - (h.duck > 0 ? W.duck_hurtbox_h : PL.hurtbox_h);
     for (const o of this.a2o.overs) if (h.x + HB_W / 2 > o.x0 && h.x - HB_W / 2 < o.x1 && top < OVER_Y) { this.a2FallIn(o.kind); return; }
