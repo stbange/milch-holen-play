@@ -54,6 +54,7 @@
     hurt() { tone('sawtooth', 300, 90, 0.3, 0.14); noise(0.12, 0.15, 'lowpass', 1500); },
     crate() { noise(0.15, 0.25, 'lowpass', 900); tone('square', 150, 90, 0.1, 0.1); },
     throw() { noise(0.2, 0.08, 'highpass', 2000); },
+    wuff() { tone('triangle', 760, 540, 0.06, 0.07); tone('triangle', 820, 560, 0.06, 0.06, 0.1); },
     bark() { tone('square', 520, 380, 0.07, 0.1); tone('square', 560, 400, 0.07, 0.1, 0.12); },
     honk() { tone('sawtooth', 220, 210, 0.5, 0.12); tone('sawtooth', 277, 270, 0.5, 0.1); },
     stamp() { tone('sine', 90, 35, 0.35, 0.4); noise(0.2, 0.25, 'lowpass', 400); },

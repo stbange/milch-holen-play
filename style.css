@@ -177,3 +177,14 @@ html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden; 
 .pport .pstage-mini { position: absolute; left: 0; top: 0; width: 36px; height: 36px; transform-origin: 0 0; }
 .pport .sp { position: absolute; background-repeat: no-repeat; image-rendering: pixelated; }
 .ending .tap { color: var(--peach); font-size: 16px; margin-top: 14px; animation: blink .6s infinite alternate; }
+
+/* Wurst, the companion dog, on the DOM screens */
+.pdog { display: block; position: relative; margin: 4px auto; }
+.pdog .sp { position: absolute; background-repeat: no-repeat; image-rendering: pixelated; }
+.pdog .pstage-mini { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.pp-row { display: flex; justify-content: center; align-items: flex-end; gap: 6px; }
+.pp-row .pport, .pp-row .pdog { margin: 0 0 8px; }
+.card.note { position: relative; }
+.card.note .note-dog { position: absolute; right: 18px; top: 0; transform: translateY(-62%); margin: 0; }
+.ending .dogline { color: var(--glow); font-size: 18px; }
+.pstage .ptxt.dogsay { background: var(--white); color: var(--ink); border: 1px solid var(--ink); padding: 1px 2px; font-size: 8px; line-height: 8px; white-space: nowrap; }

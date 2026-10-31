@@ -140,6 +140,8 @@
     const html = sp('kiosk_bg', 0, 0, 0)
       + sp('npc_yuppie', 0, kx - 16, ky - 48, { id: 'k-npc', anim: say === 'kiosk_bought' ? 'yuppie_cheer' : say === 'kiosk_not_enough' ? 'yuppie_shrug' : say ? 'yuppie_talk' : 'yuppie_wave' })
       + sp('kiosk_counter', 0, 0, L.counter_overlay_y)
+      + sp('npc_wurst', 0, kx - 46, L.counter_overlay_y - 5, { id: 'k-dog', anim: say === 'kiosk_bought' ? 'wurst_happy' : 'wurst_sit' })
+      + (say === 'kiosk_bought' ? `<span class="ptxt silk dogsay" id="k-dogsay" style="left:${kx - 50}px;top:${L.counter_overlay_y - 17}px">${esc(t('dog_buy'))}</span>` : '')
       + `<span class="ptxt pix title" style="left:${L.title[0]}px;top:${L.title[1]}px">${esc(t('kiosk_name'))}</span>` + bank(S.bank)
       + slots + detail + dialogue
       + thumb('back', 'normal', L.leave_button[0], L.leave_button[1], 'data-a="leave"', t('kiosk_leave'));
@@ -148,6 +150,7 @@
     const settle = () => { if (npc.isConnected) play(npc, 'yuppie_idle'); if (por.isConnected) { delete por.dataset.anim; setFrame(por, pFrame); } };
     npc.dataset.then = 'yuppie_idle';
     setTimeout(settle, say ? 1400 : 1800);
+    if (say === 'kiosk_bought') setTimeout(() => { const g = d.querySelector('#k-dog'), b = d.querySelector('#k-dogsay'); if (g && g.isConnected) play(g, 'wurst_sit'); if (b) b.remove(); }, 1500);
 
     onTap(d, '[data-u]', el => { const i = +el.dataset.u; if (i === K.sel) return; SFX.play('click'); K.sel = i; kiosk(); });
     onTap(d, '[data-a=leave]', () => { SFX.play('click'); K.sel = null; UI.map(); });
@@ -193,9 +196,10 @@
     // hero pin above the selected node + the name plate under it
     const [sx, sy] = nodes['l' + M.sel];
     const pin = sp('map_hero_marker', 0, sx - 8, sy - 10 - 21, { id: 'm-pin', anim: 'map_hero_bob' });
+    const dog = sp('npc_wurst', 0, sx + 5, sy - 27, { id: 'm-dog', anim: 'wurst_sit' });
     const title = t(LEVELS[M.sel - 1].title_key);
     const label = `<div class="plabel" id="m-label" style="top:${sy + 14}px;--cx:${sx}px"><span class="ptxt pix ink">${esc(title)}</span></div>`;
-    const html = sp('map_bg', 0, 0, 0) + dots + ns + pin + label
+    const html = sp('map_bg', 0, 0, 0) + dots + ns + dog + pin + label
       + `<span class="ptxt pix title" style="left:6px;top:4px">${esc(t('ui_missions'))}</span>` + bank(S.bank)
       + thumb('back', 'normal', B.back[0], B.back[1], 'data-a="back"', t('ui_back'))
       + thumb('kiosk', 'normal', B.kiosk[0], B.kiosk[1], 'data-a="kiosk"', t('ui_kiosk'))
@@ -232,6 +236,12 @@
     return `<span class="pport" style="width:${36 * z}px;height:${36 * z}px"><span class="pstage-mini" style="transform:scale(${z})">${sp('ui_portrait_frame', 0, 0, 0)}${stop}</span></span>`;
   }
 
-  Object.assign(window.UI, { map, kiosk, portrait, layoutStage: layout });
+  // Wurst on the text cards (win, note, ending), at the game's pixel zoom
+  function dogSprite(anim, cls, mul) {
+    const z = zoom() * (mul || 2);
+    return `<span class="pdog ${cls || ''}" style="width:${24 * z}px;height:${20 * z}px"><span class="pstage-mini" style="width:24px;height:20px;transform:scale(${z})">${sp('npc_wurst', 0, 0, 0, { anim: anim || 'wurst_sit' })}</span></span>`;
+  }
+
+  Object.assign(window.UI, { map, kiosk, portrait, dogSprite, layoutStage: layout });
   window.addEventListener('resize', () => setTimeout(layout, 0));
 })();

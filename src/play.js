@@ -85,6 +85,7 @@ window.pickupFrame = pickupFrame;
       this.makeHero();
       if (this.mode === 'escort') this.makeTrolley();
       if (this.mode === 'chase') this.makeTruck();
+      DOG.create(this);   // Wurst, the companion dog: cosmetic only (src/dog.js)
 
       const cam = this.cameras.main;
       cam.setBounds(0, 0, W * TILE, 216);
@@ -333,6 +334,7 @@ window.pickupFrame = pickupFrame;
         this.refreshHud();
       }
       this.drawHero(dt);
+      DOG.update(this, dt);
       const sx = this.cameras.main.scrollX;
       this.parallax.forEach(p => { p.spr.tilePositionX = Math.round(sx * p.f); });
     }
@@ -461,6 +463,7 @@ window.pickupFrame = pickupFrame;
       const c0 = Math.floor((h.x - R) / TILE), c1 = Math.floor((h.x + R) / TILE);
       for (let c = c0; c <= c1; c++) for (let r = rowOf(h.y - 20); r <= rowOf(h.y + 2); r++) if (this.cell(c, r) === CRATE) this.hitCrate(c, r, 99);
       this.objs.lids.forEach(l => { if (Math.abs(l.x - h.x) < R && Math.abs(l.y - h.y) < 30) this.killLid(l); });
+      DOG.onSlam(this, h.x, R);
     }
 
     fellInPit() {
@@ -477,6 +480,7 @@ window.pickupFrame = pickupFrame;
       h.x = rx; h.y = GY; h.vx = 0; h.vy = 0; h.slamming = false; h.inv = PL.invuln_after_hit_s; h.kb = 0; h.grounded = true;
       while (this.solidAt(h.x, h.y - 2) && h.y > 40) h.y -= TILE;
       if (this.trolley && this.trolley.hitched) this.trolley.x = h.x - ESC.follow_distance_px;
+      DOG.onRespawn(this);
     }
 
     // returns true if this killed the hero
@@ -492,7 +496,7 @@ window.pickupFrame = pickupFrame;
       h.inv = PL.invuln_after_hit_s; h.kb = PL.knockback_s;
       h.vx = PL.knockback_vx; h.vy = -Math.abs(PL.knockback_vy); h.slamming = false; h.grounded = false;
       this.hitstop = 0.06;
-      this.loseHeart(1);
+      if (!this.loseHeart(1)) DOG.onHurt(this);
     }
     die(reasonKey) {
       if (this.dead || this.ended) return;

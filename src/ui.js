@@ -66,7 +66,7 @@
     // ---------------- Pre-level: neighbour's note + mission goal ----------------
     levelCard(n) {
       const L = LEVELS[n - 1];
-      const d = screen(`<div class="card note"><h2>${esc(t(L.title_key))}</h2><p>${esc(t(L.note_key))}</p>
+      const d = screen(`<div class="card note">${UI.dogSprite('wurst_sit', 'note-dog')}<h2>${esc(t(L.title_key))}</h2><p>${esc(t(L.note_key))}</p>
         <div class="goal">➜ ${esc(t(L.goal_key))}</div><div class="tap">${esc(t('ui_tap_to_start'))} ▶</div></div>`, 'dim');
       tapAnywhere(d, () => { clear(); GAMEFLOW.startLevel(n); }, window.GAME_DATA.tuning.flow.card_min_show_s * 0.5);
     },
@@ -97,7 +97,7 @@
     win(n, bottles, unlockedNew, onNext) {
       const L = LEVELS[n - 1];
       const d = screen(`<div class="card" style="text-align:center"><h2>${esc(t('ui_level_clear'))}</h2>
-        ${UI.portrait('hero_portrait', 2, 1200)}${n === 1 ? '<span class="milk"></span>' : ''}<p>${esc(t(L.card_after_key))}</p>
+        <div class="pp-row">${UI.portrait('hero_portrait', 2, 1200)}${UI.dogSprite('wurst_happy')}</div>${n === 1 ? '<span class="milk"></span>' : ''}<p>${esc(t(L.card_after_key))}</p>
         <p class="goal">${esc(t('ui_bottles_banked', { N: bottles }))} · ${bankHtml().replace('class="bank"', 'class="bank" style="display:inline-flex;color:var(--white)"')}</p>
         <div class="tap">${esc(t('ui_continue'))} ▶</div></div>`, 'dim');
       tapAnywhere(d, () => { clear(); onNext(); }, window.GAME_DATA.tuning.flow.card_min_show_s);
@@ -110,7 +110,7 @@
       const from = cfg.endingFrom ? `<p>${esc(t('ui_from', { N: cfg.endingFrom }))}</p>` : '';
       const cards = [
         () => `${UI.portrait('hero_portrait', 2, 1500)}<span class="milk"></span><p>${esc(t('ending_1'))}</p>`,
-        () => `<p>${esc(t('ending_2'))}</p>`,
+        () => `<p>${esc(t('ending_2'))}</p>${UI.dogSprite('wurst_happy')}<p class="dogline">${esc(t('dog_ending'))}</p>`,
         () => `${UI.portrait('hero_portrait', 2, 0)}<p>${esc(t('ending_anton'))}</p>`,
         () => `<p class="ded">${esc(own ? own.replace(/\{HERO\}/g, I18N.hero()) : t('ending_dedication'))}</p>${from}`,
       ];
