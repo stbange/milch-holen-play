@@ -106,6 +106,8 @@ window.pickupFrame = pickupFrame;
       cam.setBounds(0, 0, W * TILE, 216);
       cam.setRoundPixels(true);
       cam.scrollX = 0;
+      // Phaser floors scrollX every frame when roundPixels is on, so keep the real (sub-pixel) scroll here
+      this.camX = 0;
 
       this.charge = 0;
       this.specialReq = this.stats.special_unlocked ? SP.charge_required[Math.max(0, this.stats.special_level - 1)] : 0;
@@ -537,14 +539,18 @@ window.pickupFrame = pickupFrame;
     // ------------------------------------------------------------ camera
     updateCamera(dt) {
       const cam = this.cameras.main, h = this.hero, maxX = this.W * TILE - this.viewW;
+      // integrate in this.camX: cam.scrollX gets floored by Phaser (roundPixels), so at high refresh rates
+      // (90/120 Hz phones) speed*dt < 1 px and the chase/arena scroll would stall.
+      if (!(Math.abs(this.camX - cam.scrollX) < 1.5)) this.camX = cam.scrollX;
       if (this.mode === 'chase' && this.truck && this.truck.on) {
-        if (!this.ended && !this.dead) cam.scrollX = Math.min(maxX, cam.scrollX + CH.camera_speed * dt);
+        if (!this.ended && !this.dead) this.camX = Math.min(maxX, this.camX + CH.camera_speed * dt);
       } else if (this.mode === 'boss' && this.arenaOn) {
-        if (!this.ended && !this.dead) cam.scrollX = Math.min(maxX, cam.scrollX + B.arena_scroll_speed * dt);
+        if (!this.ended && !this.dead) this.camX = Math.min(maxX, this.camX + B.arena_scroll_speed * dt);
       } else if (!this.dead) {
         const target = clamp(h.x - CAM.follow_screen_x, 0, maxX);
-        cam.scrollX += (target - cam.scrollX) * Math.min(1, CAM.lerp_per_s * dt);
+        this.camX += (target - this.camX) * Math.min(1, CAM.lerp_per_s * dt);
       }
+      cam.scrollX = this.camX;
     }
 
     // ------------------------------------------------------------ escort trolley
