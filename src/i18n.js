@@ -6,11 +6,13 @@
     de: { ui_level: 'Mission {N}', ui_back: 'Zurück', ui_credits: 'Abspann', ui_play_again: 'Zur Karte', ui_paused: 'Pause',
       ui_new_best: 'Neu freigeschaltet: Mission {N}', ui_sound: 'Ton', ui_lang_toggle: 'English', ui_from: 'Von: {N}',
       credits: 'Idee: Le Punk · Spieldesign: MVP Systems Designer · Grafik: MVP Tech Artist · Code: Grok Bot\nEngine: Phaser 3 (MIT) · Schriften: Pixelify Sans, Silkscreen (SIL OFL 1.1) · Töne: live im Browser erzeugt',
-      special_locked: 'Knödelkanone? Gibt\'s in {KIOSK}.' },
+      special_locked: 'Knödelkanone? Gibt\'s in {KIOSK}.',
+      ui_rotate_fs: 'Handy drehen & tippen für Vollbild', ui_fs_on: 'Vollbild', ui_fs_off: 'Vollbild aus' },
     en: { ui_level: 'Mission {N}', ui_back: 'Back', ui_credits: 'Credits', ui_play_again: 'To the map', ui_paused: 'Paused',
       ui_new_best: 'Unlocked: Mission {N}', ui_sound: 'Sound', ui_lang_toggle: 'Deutsch', ui_from: 'From: {N}',
       credits: 'Idea: Le Punk · Game design: MVP Systems Designer · Art: MVP Tech Artist · Code: Grok Bot\nEngine: Phaser 3 (MIT) · Fonts: Pixelify Sans, Silkscreen (SIL OFL 1.1) · Sounds: synthesised live in the browser',
-      special_locked: 'Get the dumpling cannon at {KIOSK}.' },
+      special_locked: 'Get the dumpling cannon at {KIOSK}.',
+      ui_rotate_fs: 'Turn your phone & tap for fullscreen', ui_fs_on: 'Fullscreen', ui_fs_off: 'Exit fullscreen' },
   };
   let lang = 'de';
   const I18N = {

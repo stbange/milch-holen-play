@@ -36,7 +36,7 @@
       const S = SAVE.data, started = S.unlocked > 1 || S.bank > 0;
       const d = screen(`
         <div class="corner"><button class="btn small" data-a="sound">${t(S.sound ? 'ui_sound_on' : 'ui_sound_off')}</button>
-          <button class="btn small" data-a="lang">${S.lang === 'de' ? 'English' : 'Deutsch'}</button></div>
+          <button class="btn small" data-a="lang">${S.lang === 'de' ? 'English' : 'Deutsch'}</button>${FS.button()}</div>
         <div class="title-wrap">
           <h1>${esc(t('ui_title'))}</h1>
           <p class="sub">${esc(t('ui_subtitle'))}</p>
@@ -49,6 +49,7 @@
       on(d, '[data-a=play]', () => { SFX.music('menu'); UI.map(); });
       on(d, '[data-a=credits]', () => UI.credits(() => UI.title()));
       on(d, '[data-a=reset]', () => UI.confirmReset());
+      on(d, '[data-a=fs]', () => FS.toggle());
     },
     confirmReset() {
       const d = screen(`<div class="card"><p>${esc(t('ui_reset_confirm'))}</p><div class="row actions">
@@ -76,12 +77,13 @@
         <div class="row actions"><button class="btn primary" data-a="resume">${esc(t('ui_resume'))}</button>
         <button class="btn" data-a="restart">${esc(t('ui_restart'))}</button><button class="btn" data-a="map">${esc(t('ui_to_map'))}</button></div>
         <div class="row actions"><button class="btn small" data-a="sound">${esc(t(S.sound ? 'ui_sound_on' : 'ui_sound_off'))}</button>
-        <button class="btn small" data-a="lang">${S.lang === 'de' ? 'English' : 'Deutsch'}</button></div></div>`, 'dim');
+        <button class="btn small" data-a="lang">${S.lang === 'de' ? 'English' : 'Deutsch'}</button>${FS.button()}</div></div>`, 'dim');
       on(d, '[data-a=resume]', () => { clear(); onResume(); });
       on(d, '[data-a=restart]', () => { clear(); onRestart(); });
       on(d, '[data-a=map]', () => { clear(); onMap(); });
       on(d, '[data-a=sound]', () => { S.sound = !S.sound; SFX.setEnabled(S.sound); SAVE.write(); UI.pause(onResume, onRestart, onMap); });
       on(d, '[data-a=lang]', () => { S.lang = S.lang === 'de' ? 'en' : 'de'; I18N.setLang(S.lang); SAVE.write(); UI.pause(onResume, onRestart, onMap); UI.refreshRotate(); });
+      on(d, '[data-a=fs]', () => FS.toggle());
     },
     death(n, extraKey, onRestart, onMap) {
       const k = 'death_' + (1 + Math.floor(Math.random() * 3));
@@ -158,7 +160,7 @@
         el.textContent = text; el.classList.remove('hidden', 'show'); void el.offsetWidth; el.classList.add('show');
       },
     },
-    refreshRotate() { $('rotate-text').textContent = t('ui_rotate'); },
+    refreshRotate() { $('rotate-text').textContent = t(window.FS && FS.armed ? 'ui_rotate_fs' : 'ui_rotate'); },
   };
   $('btn-pause').addEventListener('pointerdown', e => { e.stopPropagation(); if (INPUT.onPause) INPUT.onPause(); });
   $('btn-special').addEventListener('pointerdown', e => { e.stopPropagation(); if (INPUT.onSpecial) INPUT.onSpecial(); });
