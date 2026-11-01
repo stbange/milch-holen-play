@@ -5,7 +5,7 @@
   const pointers = new Map(); // pointerId -> {zone, x0, y0, t0, swiped}
   const queue = [];
   let keyBrake = false;
-  const SWIPE_PX = 18; // CSS px (≈ 13 logical px at the usual phone zoom); short so a slow swipe-down still slams
+  const IL = window.MH.input;   // SWIPE_PX = 18 CSS px (≈ 13 logical px at the usual phone zoom): short so a slow swipe-down still slams
   const INPUT = {
     queue,
     enabled: false,
@@ -15,7 +15,7 @@
     onPause: null, onSpecial: null,
   };
   const layer = document.getElementById('touch');
-  function zoneOf(x) { return x < window.innerWidth * 0.4 ? 'L' : 'R'; }
+  function zoneOf(x) { return IL.zoneOf(x, window.innerWidth); }
   layer.addEventListener('pointerdown', e => {
     e.preventDefault();
     const zone = zoneOf(e.clientX);
@@ -25,8 +25,7 @@
   });
   layer.addEventListener('pointermove', e => {
     const p = pointers.get(e.pointerId);
-    if (!p || p.swiped || p.zone !== 'R') return;
-    if (e.clientY - p.y0 >= SWIPE_PX && performance.now() - p.t0 <= 300) { p.swiped = true; INPUT.push('swipe'); }
+    if (IL.isSwipe(p, e.clientY, performance.now())) { p.swiped = true; INPUT.push('swipe'); }
   });
   function up(e) {
     const p = pointers.get(e.pointerId);
@@ -38,16 +37,16 @@
   layer.addEventListener('contextmenu', e => e.preventDefault());
 
   window.addEventListener('keydown', e => {
-    const k = e.code;
-    if (k === 'Escape' || k === 'KeyP') { if (INPUT.onPause) INPUT.onPause(); return; }
+    const a = IL.keyAction(e.code);
+    if (a === 'pause') { if (INPUT.onPause) INPUT.onPause(); return; }
     if (!INPUT.enabled) return;
-    if (k === 'ArrowLeft' || k === 'KeyA') { keyBrake = true; e.preventDefault(); }
-    else if (k === 'Space' || k === 'ArrowUp' || k === 'KeyW') { if (!e.repeat) { INPUT.push('press'); INPUT.push('release'); } e.preventDefault(); }
-    else if (k === 'ArrowDown' || k === 'KeyS') { if (!e.repeat) INPUT.push('slam'); e.preventDefault(); }
-    else if (k === 'KeyX' || k === 'KeyE' || k === 'Enter') { if (!e.repeat && INPUT.onSpecial) INPUT.onSpecial(); e.preventDefault(); }
+    if (a === 'brake') { keyBrake = true; e.preventDefault(); }
+    else if (a === 'jump') { if (!e.repeat) { INPUT.push('press'); INPUT.push('release'); } e.preventDefault(); }
+    else if (a === 'slam') { if (!e.repeat) INPUT.push('slam'); e.preventDefault(); }
+    else if (a === 'special') { if (!e.repeat && INPUT.onSpecial) INPUT.onSpecial(); e.preventDefault(); }
   });
   window.addEventListener('keyup', e => {
-    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keyBrake = false;
+    if (IL.keyAction(e.code) === 'brake') keyBrake = false;
   });
   window.addEventListener('blur', () => { keyBrake = false; pointers.clear(); });
   window.INPUT = INPUT;

@@ -36,22 +36,16 @@
     dog_oma: 'Oma Ronni always has treats.', dog_buy: 'Woof! Good pick!', dog_ending: 'And Wurst gets a sausage. Woof!',
   });
   let lang = 'de';
+  const L = window.MH.i18n;
   const I18N = {
-    setLang(l) { lang = (l === 'en') ? 'en' : 'de'; document.documentElement.lang = lang; },
+    setLang(l) { lang = L.normLang(l); document.documentElement.lang = lang; },
     get lang() { return lang; },
-    t(key, vars) {
-      let s = (TEXT[lang] && TEXT[lang][key]) || (EXTRA[lang] && EXTRA[lang][key]) || (TEXT.de[key]) || key;
-      const hero = I18N.hero();
-      s = s.replace(/\{HERO\}/g, hero);
-      if (s.indexOf('{KIOSK}') >= 0) s = s.replace(/\{KIOSK\}/g, I18N.t('kiosk_name'));
-      if (vars) for (const k in vars) s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k]);
-      return s;
-    },
+    t: L.translator(TEXT, EXTRA, () => lang, () => I18N.hero()),
   };
   // The kiosk owner's name is never hard-coded: it comes from the text data ("Xs Kiosk" / "X's Kiosk").
   // {HERO}: config.js heroName if set, otherwise names.HERO from the design text data
-  I18N.hero = () => (window.MILCH_CONFIG && String(window.MILCH_CONFIG.heroName || '').trim()) || (TEXT.names && TEXT.names.HERO) || 'Skater';
-  I18N.owner = () => I18N.t('kiosk_name').replace(/[’']?s?\s+Kiosk$/i, '').trim();
+  I18N.hero = () => L.heroName(window.MILCH_CONFIG, TEXT);
+  I18N.owner = () => L.ownerOf(I18N.t('kiosk_name'));
   window.I18N = I18N;
   window.t = I18N.t;
 })();

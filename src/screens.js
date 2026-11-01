@@ -109,15 +109,15 @@
     const levelOf = u => S.upgrades[u.id] || 0;
     const [ox, oy] = L.slots_origin, [dx, dy] = L.slot_step, cols = L.slot_cols, per = cols * 2;
     // page 2 ('Fluss-Kram') opens with arc 2; the river items only show there
-    const pages = S.unlocked >= 6 && UPG.length > per ? Math.ceil(UPG.length / per) : 1;
+    const EC = window.MH.economy, pages = EC.kioskPages(S.unlocked, UPG.length, per);
     const visible = i => pages > 1 || i < per;
-    if (K.sel === null || !UPG[K.sel] || !visible(K.sel)) { K.sel = Math.max(0, UPG.findIndex((u, i) => visible(i) && u.levels[levelOf(u)])); }
+    if (K.sel === null || !UPG[K.sel] || !visible(K.sel)) { K.sel = EC.defaultSel(UPG, S.upgrades, pages, per); }
     K.page = Math.floor(K.sel / per);
     const slots = UPG.map((u, i) => {
       if (Math.floor(i / per) !== K.page) return '';
       const j = i % per;
       const lv = levelOf(u), nxt = u.levels[lv], maxed = !nxt, short = nxt && S.bank < nxt.price;
-      const state = maxed ? 'owned' : i === K.sel ? 'selected' : short ? 'locked' : 'available';
+      const state = EC.slotState(u, i, S, K.sel);
       const x = ox + (j % cols) * dx, y = oy + Math.floor(j / cols) * dy;
       const pips = u.levels.map((_, k) => sp('kiosk_pips', k < lv ? 1 : k === lv ? 2 : 0, 20 - (u.levels.length * 7 - 1) / 2 + k * 7, 23)).join('');
       const tag = maxed ? 'sold_out' : short ? 'short' : 'ok';
@@ -172,10 +172,10 @@
     onTap(d, '[data-a=kpage]', () => { SFX.play('click'); const np = (K.page + 1) % pages; K.sel = np * per; kiosk(); });
     onTap(d, '[data-a=leave]', () => { SFX.play('click'); K.sel = null; UI.map(); });
     onTap(d, '[data-a=buy]', () => {
-      const u2 = UPG[K.sel], lv2 = levelOf(u2), n2 = u2.levels[lv2];
-      if (!n2) return;
-      if (S.bank < n2.price) { SFX.play('nope'); kiosk('kiosk_not_enough'); return; }
-      S.bank -= n2.price; S.upgrades[u2.id] = lv2 + 1; SAVE.write(); SFX.play('buy');
+      const r = EC.buy(S, UPG[K.sel]);
+      if (r === 'maxed') return;
+      if (r === 'short') { SFX.play('nope'); kiosk('kiosk_not_enough'); return; }
+      SAVE.write(); SFX.play('buy');
       const i = K.sel; kiosk('kiosk_bought');
       const fx = document.getElementById('kaching-' + i);
       if (fx) { fx.outerHTML = sp('fx_kaching', 0, 12, 5, { id: 'kaching-' + i, anim: 'kaching' }); }
@@ -191,28 +191,26 @@
   // page 1 = the village (missions 1-5), page 2 = 'Ab nach Soest' (6-10, once mission 5 is beaten)
   function map() {
     const S = SAVE.data;
-    const unlocked = Math.min(LEVELS.length, S.unlocked), has2 = !!A.map_bg_arc2 && LEVELS.length >= 6 && unlocked >= 6;
+    const PG = window.MH.progress, unlocked = Math.min(LEVELS.length, S.unlocked);
     const prog = S.unlocked + '|' + S.cleared.filter(Boolean).length + '|' + ((window.GAMEFLOW && GAMEFLOW.winSeq) || 0);
     if (M.unl !== prog) { M.unl = prog; M.sel = null; }   // progress changed (new mission open / one cleared): jump to the first open one
-    if (!M.sel || M.sel > unlocked) { const firstOpen = LEVELS.findIndex((_, i) => i < unlocked && !S.cleared[i]); M.sel = firstOpen >= 0 ? firstOpen + 1 : unlocked; }
-    if (!has2 && M.sel > 5) M.sel = Math.min(5, unlocked);
-    const page = has2 && M.sel > 5 ? 2 : 1, n0 = page === 2 ? 6 : 1, n1 = page === 2 ? 10 : Math.min(5, LEVELS.length);   // arc-2 nodes not built yet show locked
+    const mv = PG.mapView(S, LEVELS.length, A.map_bg_arc2, M.sel), has2 = mv.has2, page = mv.page, n0 = mv.n0, n1 = mv.n1;   // arc-2 nodes not built yet show locked
+    M.sel = mv.sel;
     M.page = page;
     const bg = page === 2 ? A.map_bg_arc2 : A.map_bg, nodes = bg.nodes, B = bg.buttons, nkey = page === 2 ? 'map_nodes_arc2' : 'map_nodes', bgKey = page === 2 ? 'map_bg_arc2' : 'map_bg';
     const NF = A[nkey].frames;
     // path dots: lit when the mission at the end of the segment is unlocked
     let dots = '';
     for (const seg in bg.pathDots) {
-      const end = seg.split('-')[1], n = /^l(\d+)$/.test(end) ? +end.slice(1) : 0;
-      const lit = end === 'kiosk' || n <= unlocked;
+      const lit = PG.dotLit(seg, unlocked);
       bg.pathDots[seg].forEach(([x, y]) => { dots += sp('map_path_dot', lit ? 1 : 0, x - 2, y - 2); });
     }
     let ns = '';
     for (let n = n0; n <= n1; n++) {
       const id = 'l' + n; if (!nodes[id] || !NF[id]) continue;
       const [cx, cy] = nodes[id], f = NF[id];
-      const locked = n > unlocked, cleared = !!S.cleared[n - 1], cur = n === M.sel;
-      const frame = locked ? f.locked : cur ? f.current_a : cleared ? f.cleared : f.open;
+      const st = PG.nodeState(n, unlocked, S.cleared, M.sel), locked = st === 'locked', cur = st === 'current';
+      const frame = f[{ locked: 'locked', current: 'current_a', cleared: 'cleared', open: 'open' }[st]];
       ns += btn(`data-l="${n}" data-state="${locked ? 'locked' : 'open'}" ${locked ? 'aria-disabled="true"' : ''}`, cx - 12, cy - 12, 24, 24,
         sp(nkey, frame, 0, 0, { cls: 'c', anim: cur && !locked ? `map_node_${id}_current` : '' }), locked ? t('ui_locked') : t(LEVELS[n - 1].title_key));
     }
@@ -307,7 +305,7 @@
     setTimeout(() => { if (por.isConnected) { delete por.dataset.anim; setFrame(por, st.taken >= 0 ? 2 : 0); } }, 1400);
     const take = i => {
       const b = offer[i]; if (!b) return;
-      S.boon = { id: b.id, level: 0 }; SAVE.write(); SFX.play('cheer'); setTimeout(() => SFX.play('wuff'), 250);
+      window.MH.economy.takeBoon(S, b.id); SAVE.write(); SFX.play('cheer'); setTimeout(() => SFX.play('wuff'), 250);
       tuete(n, offer, { sel: i, taken: i, said: 'ui_tuete_taken', dog: 'wurst_spin' });
     };
     let leaving = false;

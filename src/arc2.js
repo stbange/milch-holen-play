@@ -7,8 +7,9 @@
   const { TILE, GY, ROWS, GROUND_ROW, EMPTY, SOLID, ONEWAY, CRATE, HB_W, HB_OFF, rng, clamp, approach } = window.PlayScene.consts();
   const A2 = T.arc2, W = A2.water, BK = A2.bike, UF = A2.unfold, M = T.movement, PL = T.player, EN = T.enemies, HZ = T.hazards, TL = T.tells;
   const t = (k, v) => I18N.t(k, v);
-  const G_W = M.gravity * W.gravity_mult;
-  const HOP_V = Math.sqrt(2 * G_W * (M.jump_velocity * M.jump_velocity / (2 * M.gravity)) * W.hop_height_ratio);
+  const WA = window.MH.water, TRL = window.MH.trailer, BL = window.MH.boss;
+  const G_W = WA.waterGravity(M, W);
+  const HOP_V = WA.hopVelocity(M, W);
   const OVER_Y = GY - W.overhead_bottom_above_water_px;     // underside of bridges / branches / nets
   const ORANGE = 0xff7a1a, INK = 0x1a1426;
   const FONT = { fontFamily: '"Pixelify Sans", Pixelify, sans-serif', fontSize: '10px', color: '#ff7a1a', stroke: '#1a1426', strokeThickness: 3 };
@@ -24,13 +25,13 @@
     const L = this.L;
     this.water = L.mode === 'water' || L.mode === 'mixed';
     this.vehicle = this.water ? 'sup' : 'bike';
-    this.currents = (L.hazards || []).filter(h => h.type === 'current').map(h => ({ x: h.x * TILE, s: h.speed })).sort((a, b) => a.x - b.x);
+    this.currents = WA.currentsOf(L.hazards, TILE);
     this.a2o = { obst: [], overs: [], weirs: [], locks: [], threats: [] };
     this.heroSX = W.hero_screen_x; this.lockOn = null; this.cutscene = null; this.trailer = null;   // the scene object is reused between levels
     this.dockX = L.dock_x ? L.dock_x * TILE : null;
     this.barkCd = 0; this.dogCd = 4; this.grp = null;
   };
-  P.currentAt = function (x) { let s = W.current_base; for (const c of this.currents) if (x >= c.x) s = c.s; return s; };
+  P.currentAt = function (x) { return WA.currentAt(this.currents, W.current_base, x); };
 
   P.a2Background = function () {
     const sc = SCENERY[this.L.scenery] || SCENERY.ahse;
@@ -131,20 +132,11 @@
     const h = this.hero, q = INPUT.queue;
     if (this.cutscene) { for (const ev of q.splice(0)) if (ev.type === 'press') this.unfoldTap(); return true; }
     if (!this.water) {   // bike: a swipe on the ground ducks (crows); in the air it is the usual slam
-      for (let i = 0; i < q.length; i++) {
-        const ev = q[i];
-        if ((ev.type === 'swipe' || ev.type === 'slam') && h.grounded && (this.time0 - h.lastJumpT) >= 0.2) { h.duck = BK.duck_s; q.splice(i, 1); i--; }
-      }
+      window.MH.input.bikeInput(h, q, this.time0, BK.duck_s);
       return false;
     }
-    for (const ev of q.splice(0)) {
-      if (h.sunk > 0) continue;
-      if (ev.type === 'press') { if (h.grounded) this.a2Hop(); else h.hopBuf = W.hop_buffer_s; }   // air tap: hop again on landing
-      else if (ev.type === 'swipe' || ev.type === 'slam') {
-        if (h.grounded) { h.duck = W.duck_s; SFX.play('throw'); }
-        else { h.duckBuf = 0.3; h.vy = Math.max(h.vy, 140); }
-      }
-    }
+    // air tap: hop again on landing; air swipe: duck on landing and drop faster
+    window.MH.input.waterInput(h, q.splice(0), W, this.waterActs || (this.waterActs = { hop: () => this.a2Hop(), duck: () => { this.hero.duck = W.duck_s; SFX.play('throw'); } }));
     return true;
   };
   P.a2Hop = function (mult) {
@@ -165,43 +157,26 @@
       return;
     }
     const brake = INPUT.brake && !this.ended;
-    if (this.lockOn) this.heroSX += (brake ? -W.backpaddle_px_s : W.lock_push_px_s) * dt;
-    else if (brake) this.heroSX -= W.backpaddle_px_s * dt;
-    else this.heroSX = approach(this.heroSX, W.hero_screen_x, W.return_px_s * dt);
-    this.heroSX = Math.max(W.hero_screen_x_min, this.heroSX);
+    this.heroSX = WA.paddleX(this.heroSX, brake, !!this.lockOn, W, dt);
     h.x = this.camX + this.heroSX;
-    h.vx = this.lockOn ? 0 : this.currentAt(h.x) - (brake ? W.backpaddle_px_s : 0);
+    h.vx = WA.waterVx(!!this.lockOn, this.currentAt(h.x), brake, W);
     // vertical: floaty hop, no double jump
-    if (!h.grounded) {
-      h.vy += G_W * dt; h.y += h.vy * dt;
-      if (h.y >= GY) {
-        h.y = GY; h.vy = 0; h.grounded = true; this.a2Splash(h.x, GY + 2, 0.5); SFX.play('land');
-        if (h.hopBuf > 0) { h.hopBuf = 0; this.a2Hop(); }
-        else if (h.duckBuf > 0) { h.duckBuf = 0; h.duck = W.duck_s; }
-      }
-    }
-    if (h.hopBuf > 0) h.hopBuf -= dt;
-    if (h.duckBuf > 0) h.duckBuf -= dt;
+    const ev = WA.waterFall(h, dt, G_W, GY, W);   // landed: 'land' | 'hop' (buffered tap) | 'duck' (buffered swipe)
+    if (ev) { this.a2Splash(h.x, GY + 2, 0.5); SFX.play('land'); if (ev === 'hop') this.a2Hop(); }
     // duck: lasts duck_s, held while still under something
-    const under = this.a2o.overs.some(o => h.x + HB_W / 2 > o.x0 - 2 && h.x - HB_W / 2 < o.x1 + 2);
-    if (h.duck > 0) h.duck = under && h.grounded ? Math.max(h.duck - dt, 0.05) : h.duck - dt;
+    h.duck = WA.duckStep(h.duck, WA.underAny(h.x, this.a2o.overs, HB_W), h.grounded, dt);
     if (this.ended || this.dead) return;
     // weirs: automatic surf-hop off the lip
     for (const w of this.a2o.weirs) if (!w.done && h.x >= w.x) { w.done = true; if (h.grounded) this.a2Hop(W.surf_hop_mult); this.a2Splash(w.x + 10, GY + 4, 1.2); }
     if (h.inv > 0) return;
     // logs / rocks: the board's feet must clear them. Coyote grace: a hop that starts within coyote_s
     // of first touching the obstacle still counts as clearing it (a slightly late tap is forgiven).
-    for (const o of this.a2o.obst) {
-      if (o.cleared) continue;
-      const touch = Math.abs(h.x - o.x) < (o.w + o.fw) / 2 && h.y > GY - o.h;
-      if (!touch) { if (o.touchT) o.touchT = 0; continue; }
-      if (!o.touchT) o.touchT = this.time0;
-      if (h.lastJumpT >= o.touchT) { o.cleared = true; continue; }
-      if (this.time0 - o.touchT >= W.coyote_s) { o.touchT = 0; this.a2FallIn(o.kind); return; }
-    }
+    const hitO = WA.obstacleStep(h, this.a2o.obst, this.time0, GY, W.coyote_s);
+    if (hitO) { this.a2FallIn(hitO.kind); return; }
     // overhead: the standing (or hopping) hurtbox top hits the underside
     const top = h.y - HB_OFF - (h.duck > 0 ? W.duck_hurtbox_h : PL.hurtbox_h);
-    for (const o of this.a2o.overs) if (h.x + HB_W / 2 > o.x0 && h.x - HB_W / 2 < o.x1 && top < OVER_Y) { this.a2FallIn(o.kind); return; }
+    const hitOv = WA.overheadHit(h.x, top, this.a2o.overs, HB_W, OVER_Y);
+    if (hitOv) { this.a2FallIn(hitOv.kind); return; }
     // closed lock gate
     if (this.lockOn && h.x + HB_W / 2 >= this.lockOn.x - 8) this.a2FallIn('gate');
   };
@@ -369,8 +344,8 @@
       case 'hecht': {
         if (e.state === 'wait') {
           if (dist < d.trigger_ahead_px + 40 && !this.lockOn) {
-            const lead = Math.max(d.tell_s, TL.min_s);
-            e.x = h.x + Math.max(40, (this.water ? this.currentAt(h.x) : 80) * lead);
+            const lead = WA.hechtLead(d, TL.min_s);
+            e.x = WA.hechtX(h.x, this.water ? this.currentAt(h.x) : 80, lead);
             e.state = 'fin'; e.t = lead; e.spr.setVisible(true); e.spr.play('hecht_fin'); e.spr.setTint(ORANGE);
             e.alert = this.alertFx(e.x, GY - 18); SFX.play('alert'); this.a2Bark();
           }
@@ -378,7 +353,7 @@
         }
         if (e.state === 'fin' && e.t <= 0) {
           e.state = 'lunge'; e.t = d.lunge_s; e.active = true; e.spr.clearTint(); this.dropAlert(e); e.spr.play('hecht_lunge'); SFX.play('splash'); this.a2Splash(e.x, GY + 2, 1);
-          e.box = { x0: e.x - d.lunge_w_px / 2, x1: e.x + d.lunge_w_px / 2, y0: GY - d.lunge_h_px, y1: GY };
+          e.box = WA.hechtBox(e.x, d, GY);
         } else if (e.state === 'lunge') {
           const u = 1 - e.t / d.lunge_s;
           e.spr.y = Math.round(GY + 2 - Math.sin(Math.PI * clamp(u, 0, 1)) * d.lunge_h_px * 0.8);
@@ -531,7 +506,7 @@
   P.kuhUpdate = function (dt) {
     const bs = this.boss, BB = this.BB, cam = this.cameras.main, h = this.hero;
     const anchor = cam.scrollX + this.bossScreenX();
-    if (BB.dps_cap) bs.bucket = Math.min(BB.dps_cap * (bs.exposed > 0 ? BB.exposed_mult : 1), (bs.bucket || 0) + BB.dps_cap * dt * (bs.exposed > 0 ? BB.exposed_mult : 1));
+    if (BB.dps_cap) bs.bucket = BL.refillBucket(bs.bucket, BB, bs.exposed, dt);
     if (!bs.entering && bs.alive) {
       if (bs.state === 'charge') {
         bs.x += (BB.arena_scroll_speed - bs.a.charge_speed_screen) * dt;
@@ -607,7 +582,7 @@
     SFX.play('hit');
     if (bs.hp <= 0) { this.defeatBoss(); return true; }
     const thr = BB.phase_hp_thresholds;
-    const np = bs.hp <= thr[2] ? 3 : bs.hp <= thr[1] ? 2 : 1;
+    const np = BL.phaseFor(bs.hp, thr);
     if (np !== bs.phase) {
       bs.inv = BB.transition_invuln_s;
       if (bs.telegraph) { bs.telegraph = null; this.kuhTellFx(false); }
@@ -673,7 +648,7 @@
   // bike's rear axle (hero x - 14, hero y - 8); the tail wheels follow the floor 54 px behind and lag in
   // jumps (so the board tilts). Wurst sits on the deck, bounces on landings, barks at monsters ahead
   // and now and then hops off, chases the trailer and jumps back on.
-  const TR_LEN = 54, DOG_LX = -35, DOG_LY = -3, DOG_G = 900, TR_MAX = 0.35;
+  const TR_LEN = TRL.TR.LEN, DOG_G = TRL.TR.DOG_G;
   P.a2TrailerMake = function () {
     if (this.trailer) return this.trailer;
     const h = this.hero;
@@ -686,8 +661,8 @@
     return this.trailer;
   };
   P.a2TrailerSlot = function () {   // world position of Wurst's seat on the deck
-    const T2 = this.trailer, s = this.hero.spr, hx = s.x - 14, hy = s.y - 8, c = Math.cos(T2.rot), sn = Math.sin(T2.rot);
-    return { x: hx + DOG_LX * c - DOG_LY * sn, y: hy + DOG_LX * sn + DOG_LY * c };
+    const s = this.hero.spr;
+    return TRL.seat(s.x - 14, s.y - 8, this.trailer.rot);
   };
   P.a2TrailerUpdate = function (dt) {
     const T2 = this.trailer; if (!T2) return;
@@ -696,18 +671,15 @@
     if (!show) return;
     // --- the board: coupler on the rear axle, tail wheels on the floor behind (lagging in the air)
     const hx = s.x - 14, hy = s.y - 8;
-    let want = h.y;
-    if (h.grounded) { const f = this.floorBelow(h.x - 14 - TR_LEN, h.y - 10); if (isFinite(f) && Math.abs(f - h.y) <= 14) want = f; }
-    T2.wy = clamp(approach(T2.wy, want, 240 * dt), h.y - TR_MAX * TR_LEN, h.y + TR_MAX * TR_LEN);
-    let rot = -(T2.wy - h.y) / TR_LEN; if (Math.abs(rot) < 0.04) rot = 0;
-    T2.rot = rot;
+    const tl = TRL.tilt(T2.wy, h.y, h.grounded ? this.floorBelow(h.x - 14 - TR_LEN, h.y - 10) : NaN, h.grounded, dt), rot = tl.rot;
+    T2.wy = tl.wy; T2.rot = rot;
     T2.spr.setPosition(hx, hy).setRotation(rot);
     T2.spr.anims.timeScale = clamp(Math.abs(h.vx) / BK.run_speed, 0, 1.4);
     // --- Wurst
     const moving = Math.abs(h.vx) > 20 && h.grounded;
     T2.hopCd -= dt; T2.lineCd -= dt; if (T2.st > 0) T2.st -= dt;
     if (!h.grounded) T2.airVy = h.vy;
-    if (h.grounded && !T2.wasG && T2.state !== 'off' && T2.dy >= 0) T2.dvy = -clamp(T2.airVy * 0.3, 40, 170);   // landing bump
+    if (h.grounded && !T2.wasG && T2.state !== 'off' && T2.dy >= 0) T2.dvy = TRL.landBump(T2.airVy);   // landing bump
     T2.wasG = h.grounded;
     let anim = null;
     if (this.dead) { T2.state = 'ride'; anim = 'wurstv_sad'; }
@@ -729,7 +701,7 @@
       if (T2.state !== 'off') anim = T2.state === 'bark' ? 'wurstv_bark' : T2.dy < -1 ? 'wurstv_jump' : moving ? 'wurstv_ride' : 'wurstv_idle';
     }
     if (T2.state !== 'off') {   // riding: hop physics relative to the deck
-      if (T2.dvy !== 0 || T2.dy < 0) { T2.dvy += DOG_G * dt; T2.dy += T2.dvy * dt; if (T2.dy >= 0) { T2.dy = 0; T2.dvy = 0; T2.spin = 0; } }
+      TRL.deckHop(T2, dt);
       const p = this.a2TrailerSlot(), bob = moving && T2.dy >= 0 && anim === 'wurstv_ride' && Math.floor(this.time0 * 8) % 2 ? -1 : 0;
       T2.dog.setPosition(Math.round(p.x), Math.round(p.y + T2.dy + bob));
       T2.dog.setRotation(T2.spin && T2.dy < 0 ? rot - Math.PI * 2 * clamp(-T2.dy / 26, 0, 1) * (T2.dvy > 0 ? 1 : 0.5) : rot);
@@ -738,9 +710,7 @@
     T2.dog.anims.timeScale = anim === 'wurstv_ride' ? clamp(Math.abs(h.vx) / BK.run_speed, 0.5, 1.5) : 1;
   };
   P.a2TrailerFlat = function (x0, x1) {   // plain floor at hero height all along (no pits, steps or crates) -> safe for the hop-off gag
-    const y = this.hero.y;
-    for (let x = x0; x <= x1; x += 8) { const f = this.floorBelow(x, y - 10); if (!isFinite(f) || Math.abs(f - y) > 1) return false; }
-    return true;
+    return TRL.flat(x0, x1, this.hero.y, (x, y) => this.floorBelow(x, y));
   };
   P.a2TrailerHopOff = function () {
     const T2 = this.trailer, p = this.a2TrailerSlot(), h = this.hero;

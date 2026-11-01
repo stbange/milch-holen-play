@@ -1,11 +1,5 @@
 // Pickup art: a mission item's own image (pickup_<id>) if the manifest has one, else its frame in 'pickups'.
-function pickupFrame(type) {
-  const A = window.ART_MANIFEST.assets, own = A.find(x => x.key === 'pickup_' + type);
-  if (own) return { key: own.key, frame: undefined };
-  const a = (A.find(x => x.key === 'pickups') || {}), fr = a.frames || {}, al = a.aliases || {};
-  const v = fr[type] !== undefined ? fr[type] : fr[al[type]];
-  return { key: 'pickups', frame: v === undefined ? 0 : (Array.isArray(v) ? v[0] : v) };
-}
+function pickupFrame(type) { return window.MH.levels.pickupFrame(window.ART_MANIFEST.assets, type); }
 window.pickupFrame = pickupFrame;
 
 // The level scene. One scene runs every mode from the design data:
@@ -24,8 +18,9 @@ window.pickupFrame = pickupFrame;
   const HB_W = PL.hurtbox_w, HB_H = PL.hurtbox_h, HB_OFF = 7;
   const rowOf = y => Math.floor((y - ROW0) / TILE);
   const rowTop = r => ROW0 + r * TILE;
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const approach = (v, target, step) => v < target ? Math.min(target, v + step) : Math.max(target, v - step);
+  const MH = window.MH, PH = MH.physics, LV = MH.levels, BL = MH.boss;
+  const { clamp, approach, rng } = MH.core;
+  const D = { TILE, ROW0, HB_W, HB_H, HB_OFF };
   const t = (k, v) => I18N.t(k, v);
   const isSolid = v => v === SOLID || v === CRATE || v === JUNK;
 
@@ -41,36 +36,7 @@ window.pickupFrame = pickupFrame;
   };
 
   // boon: the Kiosk-Tuete pick active for this level (tuning.boons.pool entry) or null
-  function computeStats(boon) {
-    const s = {
-      fire_rate_per_s: GUN.fire_rate_per_s, extra_bullet_angles_deg: [], crush_on_contact: [], scherben_harmless: false,
-      slam_damage: M.slam_damage, slam_radius: M.slam_radius, hp_hearts: PL.hp_hearts, magnet_radius: PK.magnet_base_radius,
-      special_unlocked: false, special_level: 0,
-    };
-    const up = SAVE.data.upgrades;
-    UPG.forEach(u => {
-      for (let i = 0; i < (up[u.id] || 0) && i < u.levels.length; i++) {
-        const eff = u.levels[i].effect;
-        for (const k in eff) { if (k.endsWith('_add')) s[k.slice(0, -4)] += eff[k]; else s[k] = eff[k]; }
-      }
-    });
-    s.hp_hearts = Math.min(s.hp_hearts, PL.max_hearts_with_upgrades);
-    s.bottle_mult = 1; s.jump_mult = 1; s.duckling = false; s.special_recharge_mult = 1; s.shield_hits = 0; s.dackel_friendly = false; s.special_starts_full = false;
-    if (boon) {
-      if (boon.extra_hearts) s.hp_hearts = Math.min(boon.max_hearts || 6, s.hp_hearts + boon.extra_hearts);
-      if (boon.fire_rate_add) s.fire_rate_per_s += boon.fire_rate_add;
-      if (boon.magnet_radius) s.magnet_radius = Math.max(s.magnet_radius, boon.magnet_radius);
-      if (boon.bottle_mult) s.bottle_mult = boon.bottle_mult;
-      if (boon.shield_hits) s.shield_hits = boon.shield_hits;
-      if (boon.dackel_friendly) s.dackel_friendly = true;
-      if (boon.special_starts_full) s.special_starts_full = true;
-      if (boon.jump_mult) s.jump_mult = boon.jump_mult;
-      if (boon.duckling) s.duckling = true;
-      if (boon.special_recharge_mult) s.special_recharge_mult = boon.special_recharge_mult;
-    }
-    return s;
-  }
-  function rng(seed) { let a = (seed * 2654435761) >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let x = a; x = Math.imul(x ^ x >>> 15, x | 1); x ^= x + Math.imul(x ^ x >>> 7, x | 61); return ((x ^ x >>> 14) >>> 0) / 4294967296; }; }
+  const computeStats = boon => MH.stats.computeStats(T, UPG, SAVE.data.upgrades, boon);
 
   class Play extends Phaser.Scene {
     constructor() { super('Play'); }
@@ -85,15 +51,14 @@ window.pickupFrame = pickupFrame;
       this.a2 = this.L.arc === 2; this.vehicle = null; this.water = false;
       if (this.a2) this.a2Init();
       const SB = SAVE.data.boon;
-      this.boon = (!this.attract && SB && SB.level === n) ? (TU.boons.pool.find(b => b.id === SB.id) || null) : null;
+      this.boon = this.attract ? null : MH.stats.activeBoon(TU.boons.pool, SB, n);
       this.stats = computeStats(this.boon);
       this.shield = this.stats.shield_hits; this.boonHud = this.boon ? this.boon.id : null;
       this.hitsTaken = 0; this.collectedBase = 0;
       this.viewW = this.scale.width;
       this.ended = false; this.dead = false; this.winDone = false; this.time0 = 0; this.hitstop = 0;
       this.runBottles = 0; this.bottleFrac = 0; this.healsLeft = 1; this.arenaOn = false; this.boss = null; this.trolley = null; this.truck = null; 
-      let W = this.L.length_screens * 24 + 30;
-      if (this.mode === 'boss') W = this.L.arena_start_x + (this.BB.arena_length_tiles || 2000);
+      const W = LV.worldTiles(this.L, this.BB);
       this.W = W;
       this.grid = new Uint8Array(W * ROWS);
       this.crates = new Map(); this.junk = []; this.gaps = [];
@@ -254,24 +219,11 @@ window.pickupFrame = pickupFrame;
         this.add.image((g.x + g.w) * TILE, GY, 'tiles_village', 15).setOrigin(0, 1).setDepth(9);
       });
       (L.enemies || []).forEach(e => {
-        const count = e.count || 1, spacing = (EN[e.type] && EN[e.type].group_spacing_px) || 0;
-        for (let i = 0; i < count; i++) this.spawnEnemy(e.type, e.x * TILE + 8 + i * spacing, GY - (e.y || 0) * TILE, { idx: i, onBalcony: (e.y || 0) > 0 });
+        LV.enemySpawns(e, EN, TILE, GY).forEach(q => this.spawnEnemy(q.type, q.x, q.y, { idx: q.idx, onBalcony: q.onBalcony }));
       });
-      (L.pickups || []).forEach(p => {
-        const n = p.count || 1, y0 = p.y || 0;
-        if (p.type === 'bottle') {
-          for (let i = 0; i < n; i++) {
-            let x, yT;
-            if (p.pattern === 'arc') {
-              const mid = (n - 1) / 2, u = n > 1 ? (i - mid) / (mid + 0.75) : 0;
-              x = (p.x + (i - mid) * 1.5) * TILE + 8; yT = 1 + (y0 - 1) * (1 - u * u);
-            } else { x = (p.x + i) * TILE + 8; yT = y0; }
-            this.addPickup('bottle', x, GY - yT * TILE - 9);
-          }
-        } else this.addPickup(p.type, p.x * TILE + 8, GY - y0 * TILE - 10);
-      });
+      (L.pickups || []).forEach(p => LV.pickupPositions(p, TILE, GY).forEach(q => this.addPickup(q.type, q.x, q.y)));
       (L.signs || []).forEach(s => {
-        const k = s.text_key, warn = /baustelle|dackel|sperrmuell|brake|bremsen|backoff|slam|double|jump|a2_(duck|hecht|weir|lock|gap|slam)/.test(k), x = s.x * TILE + 8;
+        const k = s.text_key, warn = LV.isWarnSign(k), x = s.x * TILE + 8;
         this.add.image(x, GY, 'prop_sign_post').setOrigin(0.5, 1).setDepth(9);
         const board = this.add.nineslice(x, GY - 26, warn ? 'prop_sign_board_warn' : 'prop_sign_board', 0, 32, 20, 4, 4, 4, 4).setOrigin(0.5, 1).setDepth(9);
         O.signs.push({ x, key: k, spr: board });
@@ -381,31 +333,15 @@ window.pickupFrame = pickupFrame;
       if (this.a2 && this.a2Input(dt)) return;
       const h = this.hero;
       const q = INPUT.queue.splice(0);
-      for (const ev of q) {
-        if (ev.type === 'press') {
-          if (h.grounded || h.coyote > 0) this.jump();
-          else if (!h.pending) h.pending = { t: M.air_tap_slam_window_s || 0.1 };
-        } else if (ev.type === 'swipe' || ev.type === 'slam') {
-          if (!h.grounded || (this.time0 - h.lastJumpT) < 0.2) { h.pending = null; this.slam(); }
-        }
-      }
-      if (h.pending) {
-        h.pending.t -= dt;
-        if (h.pending.t <= 0) {
-          h.pending = null;
-          if (h.grounded) this.jump();
-          else if (h.airJumps > 0) this.doubleJump();
-          else h.buffer = M.jump_buffer_s;
-        }
-      }
+      MH.input.landInput(h, q, dt, this.time0, M, this.landActs || (this.landActs = { jump: () => this.jump(), doubleJump: () => this.doubleJump(), slam: () => this.slam() }));
     }
     jump() {
       const h = this.hero;
-      h.vy = -M.jump_velocity * (this.stats.jump_mult || 1); h.grounded = false; h.coyote = 0; h.lastJumpT = this.time0; h.slamming = false; h.duck = 0;
+      h.vy = PH.jumpVy(M, this.stats.jump_mult); h.grounded = false; h.coyote = 0; h.lastJumpT = this.time0; h.slamming = false; h.duck = 0;
       SFX.play('jump'); this.dust(h.x, h.y);
     }
     doubleJump() {
-      const h = this.hero; h.vy = -M.double_jump_velocity * (this.stats.jump_mult || 1); h.airJumps--; h.slamming = false;
+      const h = this.hero; h.vy = PH.doubleJumpVy(M, this.stats.jump_mult); h.airJumps--; h.slamming = false;
       SFX.play('djump'); this.dust(h.x, h.y, 2);
       this.tweens.add({ targets: h.spr, angle: { from: 0, to: -360 }, duration: 320, onComplete: () => h.spr.setAngle(0) });
     }
@@ -415,37 +351,14 @@ window.pickupFrame = pickupFrame;
     }
 
     speedProfile() {
-      if (this.vehicle === 'bike') { const BK = T.arc2.bike; return { run: BK.run_speed, brake: BK.brake_speed, back: BK.back_off_speed }; }
-      if (this.mode === 'escort' && this.trolley && this.trolley.hitched) return { run: ESC.run_speed, brake: ESC.brake_speed, back: ESC.back_off_speed };
-      if (this.mode === 'chase' && this.truck && this.truck.on) return { run: CH.hero_run_speed, brake: M.brake_speed, back: M.back_off_speed };
-      return { run: M.run_speed, brake: M.brake_speed, back: M.back_off_speed };
+      return PH.speedProfile({ vehicle: this.vehicle, mode: this.mode, trolleyHitched: !!(this.trolley && this.trolley.hitched), truckOn: !!(this.truck && this.truck.on) }, T);
     }
 
     moveHero(dt) {
       if (this.water) return this.a2MoveWater(dt);
       const h = this.hero, sp = this.speedProfile();
-      if (h.kb > 0) h.kb -= dt;
-      else if (this.ended) h.vx = approach(h.vx, 0, M.brake_decel * dt);
-      else {
-        const brake = INPUT.brake;
-        let target, rate;
-        if (brake) {
-          h.holdT += dt;
-          target = h.holdT >= M.back_off_hold_s ? sp.back : sp.brake;
-          rate = h.grounded ? M.brake_decel : M.air_brake_decel;
-        } else { h.holdT = 0; target = sp.run; rate = h.vx < target ? M.accel_to_run : M.brake_decel; }
-        if (h.slamming) target = Math.min(target, sp.run * M.slam_x_speed_factor);
-        h.vx = approach(h.vx, target, rate * dt);
-      }
-      let nx = h.x + h.vx * dt;
-      const half = HB_W / 2, yTop = h.y - HB_H - HB_OFF + 1, yBot = h.y - 1;
-      if (h.vx > 0) {
-        const c = Math.floor((nx + half) / TILE);
-        for (let r = rowOf(yTop); r <= rowOf(yBot); r++) if (isSolid(this.cell(c, r))) { nx = c * TILE - half - 0.01; h.vx = 0; break; }
-      } else if (h.vx < 0) {
-        const c = Math.floor((nx - half) / TILE);
-        for (let r = rowOf(yTop); r <= rowOf(yBot); r++) if (isSolid(this.cell(c, r))) { nx = (c + 1) * TILE + half + 0.01; h.vx = 0; break; }
-      }
+      PH.stepVx(h, dt, sp, M, INPUT.brake, this.ended);
+      const nx = PH.moveX(h, h.x + h.vx * dt, D, this.cellFn || (this.cellFn = (c, r) => this.cell(c, r)), isSolid);
       h.x = nx;
       const cam = this.cameras.main;
       if (this.a2) h.x = this.a2ClampX(h.x);
@@ -454,32 +367,10 @@ window.pickupFrame = pickupFrame;
       if (this.trolley && this.trolley.hitched) h.x = Math.min(h.x, this.trolley.x + ESC.follow_distance_px + 6);
       if (!(this.mode === 'chase' && this.truck && this.truck.on)) h.x = Math.max(h.x, cam.scrollX + 8, 8);
       // vertical
-      const wasGrounded = h.grounded, prevY = h.y;
-      if (h.slamming) h.vy = M.slam_speed; else h.vy = Math.min(h.vy + M.gravity * dt, M.max_fall_speed);
-      let ny = h.y + h.vy * dt;
-      h.grounded = false;
-      const cL = Math.floor((h.x - half + 1) / TILE), cR = Math.floor((h.x + half - 1) / TILE);
-      if (h.vy >= 0) {
-        for (let r = rowOf(prevY - 0.01); r <= rowOf(ny); r++) {
-          const ty = rowTop(r); if (ty < prevY - 0.01 || ty > ny) continue;
-          let hit = false;
-          for (let c = cL; c <= cR; c++) { const v = this.cell(c, r); if (isSolid(v) || (v === ONEWAY && prevY <= ty + 0.01)) hit = true; }
-          if (hit) { ny = ty; h.vy = 0; h.grounded = true; break; }
-        }
-      } else {
-        const headOld = prevY - HB_H - HB_OFF, headNew = ny - HB_H - HB_OFF;
-        for (let r = rowOf(headOld); r >= rowOf(headNew); r--) {
-          let hit = false;
-          for (let c = cL; c <= cR; c++) if (isSolid(this.cell(c, r))) hit = true;
-          if (hit && rowTop(r + 1) <= headOld + 0.01) { ny = rowTop(r + 1) + HB_H + HB_OFF; h.vy = 0; break; }
-        }
-      }
-      h.y = ny;
-      if (h.grounded) {
-        if (!wasGrounded) this.onLand();
-        h.coyote = M.coyote_time_s; h.airJumps = M.air_jumps; h.lastGround = h.x;
-        if (h.buffer > 0) { h.buffer = 0; this.jump(); }
-      } else { h.coyote -= dt; if (h.buffer > 0) h.buffer -= dt; }
+      const wasGrounded = h.grounded;
+      PH.moveY(h, dt, M, D, this.cellFn, isSolid, v => v === ONEWAY);
+      if (h.grounded && !wasGrounded) this.onLand();
+      if (PH.groundTimers(h, dt, M)) this.jump();
       if (h.inv > 0) h.inv -= dt;
       if (!this.attract && h.y > 216 + 40 && !this.dead) this.fellInPit();
     }
@@ -559,12 +450,11 @@ window.pickupFrame = pickupFrame;
       if (!(Math.abs(this.camX - cam.scrollX) < 1.5)) this.camX = cam.scrollX;
       if (this.a2 && this.a2Camera(dt, maxX)) { cam.scrollX = this.camX; return; }
       if (this.mode === 'chase' && this.truck && this.truck.on) {
-        if (!this.ended && !this.dead) this.camX = Math.min(maxX, this.camX + CH.camera_speed * dt);
+        if (!this.ended && !this.dead) this.camX = PH.cameraScroll(this.camX, CH.camera_speed, dt, maxX);
       } else if (this.mode === 'boss' && this.arenaOn) {
-        if (!this.ended && !this.dead) this.camX = Math.min(maxX, this.camX + this.BB.arena_scroll_speed * dt);
+        if (!this.ended && !this.dead) this.camX = PH.cameraScroll(this.camX, this.BB.arena_scroll_speed, dt, maxX);
       } else if (!this.dead) {
-        const target = clamp(h.x - CAM.follow_screen_x, 0, maxX);
-        this.camX += (target - this.camX) * Math.min(1, CAM.lerp_per_s * dt);
+        this.camX = PH.cameraFollow(this.camX, h.x, maxX, CAM, dt);
       }
       cam.scrollX = this.camX;
     }
@@ -676,7 +566,7 @@ window.pickupFrame = pickupFrame;
       UI.hud.boss(1);
     }
     setupPhase(p) {
-      const bs = this.boss; bs.phase = p; bs.attacks = this.BB.phases[p - 1].attacks.map(a => ({ a, t: (a.offset_s || 0) + (p === 1 ? 2.0 : 1.5), n: 0 }));
+      const bs = this.boss; bs.phase = p; bs.attacks = BL.phaseAttacks(this.BB, p);
     }
     updateBoss(dt) {
       if (this.mode !== 'boss') return;
@@ -702,7 +592,7 @@ window.pickupFrame = pickupFrame;
         if (a.type === 'stamp_shockwave' || a.type === 'double_stamp') {
           if (bs.telegraph) { at.t = 0.4; return; }
           at.n++;
-          const big = a.every_second_wave && at.n % 2 === 0;
+          const big = BL.bigWave(a, at.n);
           bs.telegraph = { t: a.telegraph_s, a, big };
           bs.spr.stop(); bs.spr.setFrame(13); SFX.play('warn');
           if (big) UI.hud.toast(t('boss_big_stamp'), 1200);
@@ -742,9 +632,8 @@ window.pickupFrame = pickupFrame;
       this.tweens.add({ targets: label, y: label.y - 16, alpha: 0, duration: 700, delay: 300, onComplete: () => label.destroy() });
     }
     damageBoss(dmg) {
-      const bs = this.boss; if (!bs || !bs.alive || bs.inv > 0 || bs.entering) return false;
-      if (bs.exposed > 0) dmg *= (this.BB.exposed_mult || 1);
-      if (this.BB.dps_cap && dmg < 5) { dmg = Math.min(dmg, bs.bucket); bs.bucket -= dmg; if (dmg <= 0) return false; }
+      const bs = this.boss;
+      dmg = BL.hitDamage(bs, this.BB, dmg); if (!dmg) return false;
       bs.hp -= dmg; this.charge += dmg * SP.charge_per_boss_damage;
       if (this.BB !== B) return this.kuhDamaged(dmg);
       bs.spr.setTintFill(0xffffff); bs.flashT = 0.05;
@@ -752,7 +641,7 @@ window.pickupFrame = pickupFrame;
       SFX.play('hit');
       const thr = this.BB.phase_hp_thresholds;
       if (bs.hp <= 0) { this.defeatBoss(); return true; }
-      const newPhase = bs.hp <= thr[2] ? 3 : bs.hp <= thr[1] ? 2 : 1;
+      const newPhase = BL.phaseFor(bs.hp, thr);
       if (newPhase !== bs.phase) {
         bs.inv = this.BB.transition_invuln_s; bs.telegraph = null;
         this.setupPhase(newPhase); bs.spr.clearTint(); bs.flashT = 0; bs.spr.play('boss_rage'); SFX.play('honk'); this.shake(5, 300);
@@ -949,26 +838,23 @@ window.pickupFrame = pickupFrame;
     muzzles() { const h = this.hero; if (this.vehicle) return this.a2Muzzles(); return [[h.x + 21, h.y - 10], [h.x + 21, h.y - 4]]; }
     findTarget(mx, my) {
       const R = GUN.auto_target_range, cone = GUN.auto_target_cone_deg * Math.PI / 180;
-      const ok = (x, y) => { const dx = x - mx, dy = y - my; if (dx < 4) return false; const d = Math.hypot(dx, dy); if (d > R) return false; return Math.abs(Math.atan2(dy, dx)) <= cone; };
-      let best = null, bd = 1e9;
-      const consider = (x, y, pr) => { if (!ok(x, y)) return; const d = Math.hypot(x - mx, y - my) - pr; if (d < bd) { bd = d; best = { x, y }; } };
+      const pk = MH.aim.picker(mx, my, R, cone), consider = pk.consider;
       this.objs.lids.forEach(l => { if (l.alive && Math.hypot(l.x - mx, l.y - my) < GUN.projectile_priority_range) consider(l.x, l.y, 1000); });
       this.objs.files.forEach(f => {
         if (!f.alive || !f.spr) return;
         if (f.key) {   // arc-2 milk cans fall fast: aim where the can will be when the bullet gets there (lead), from the full gun range
-          let px = f.x, py = f.y - 9;
-          for (let i = 0; i < 2; i++) { const tt = Math.hypot(px - mx, py - my) / GUN.bullet_speed; px = f.x + (this.arenaOn ? this.BB.arena_scroll_speed || 0 : 0) * tt; py = Math.min(GY - 4, f.y - 9 + f.a.fall_speed * tt); }
-          if (py < GY - 6) consider(px, py, 1000); return;
+          const ld = MH.aim.leadFalling(mx, my, f, GUN.bullet_speed, this.arenaOn ? this.BB.arena_scroll_speed || 0 : 0, GY);
+          if (ld.y < GY - 6) consider(ld.x, ld.y, 1000); return;
         }
         if (Math.hypot(f.x - mx, f.y - my) < GUN.projectile_priority_range) consider(f.x, f.y - 10, 1000);
       });
-      if (best) return best;
+      if (pk.best) return pk.best;
       this.objs.enemies.forEach(e => { if (e.alive && e.active && !e.friendly) consider(e.x, e.y - e.h / 2, 0); });
       if (this.boss && this.boss.alive && !this.boss.entering) consider(this.boss.x, GY - 34, 0);
-      if (best) return best;
+      if (pk.best) return pk.best;
       const c0 = Math.floor(mx / TILE), c1 = Math.floor((mx + R) / TILE);
-      for (let c = c0; c <= c1 && !best; c++) for (let r = GROUND_ROW - 1; r >= 0; r--) if (this.cell(c, r) === CRATE) { consider(c * TILE + 8, rowTop(r) + 8, 0); if (best) break; }
-      return best;
+      for (let c = c0; c <= c1 && !pk.best; c++) for (let r = GROUND_ROW - 1; r >= 0; r--) if (this.cell(c, r) === CRATE) { consider(c * TILE + 8, rowTop(r) + 8, 0); if (pk.best) break; }
+      return pk.best;
     }
     updateGun(dt) {
       const h = this.hero;
@@ -1017,8 +903,8 @@ window.pickupFrame = pickupFrame;
     }
 
     // ------------------------------------------------------------ hazards
-    heroBox() { const h = this.hero, hh = h.duck > 0 ? T.arc2.water.duck_hurtbox_h : HB_H; return { x0: h.x - HB_W / 2, x1: h.x + HB_W / 2, y0: h.y - HB_OFF - hh, y1: h.y - HB_OFF }; }
-    overlap(a, b) { return a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0; }
+    heroBox() { return LV.heroBox(this.hero, { w: HB_W, h: HB_H, off: HB_OFF }, T.arc2.water.duck_hurtbox_h); }
+    overlap(a, b) { return MH.core.overlap(a, b); }
     updateHazards(dt) {
       const h = this.hero, P = HZ.blumentopf, hb = this.heroBox(), tb = this.trolley && this.trolley.hitched ? this.trolleyBox() : null;
       this.objs.pots.forEach(p => {
@@ -1179,13 +1065,13 @@ window.pickupFrame = pickupFrame;
     }
     checkWin() {
       const w = this.L.win, h = this.hero;
-      if (!w || w.type === 'defeat_boss' || w.type === 'none') return;
-      if (h.x < w.x * TILE) return;
-      if (w.type === 'reach_x_with_items' && this.items.some(v => !v)) {
+      const res = LV.winCheck(w, h.x, TILE, this.items || [], this.trolley);
+      if (res === 'none' || res === 'before') return;
+      if (res === 'items') {
         if (!this.nagT || this.time0 - this.nagT > 3) { this.nagT = this.time0; UI.hud.toast(t('hud_items', { N: this.items.filter(Boolean).length }), 1500); SFX.play('nope'); }
         return;
       }
-      if (w.type === 'reach_x_with_trolley' && !(this.trolley && this.trolley.hitched && this.trolley.hp > 0)) return;
+      if (res === 'trolley') return;
       this.ended = true; INPUT.enabled = false; UI.hud.warn(null);
       SFX.play('win'); SFX.music(null);
       if (this.a2) this.a2Win();
