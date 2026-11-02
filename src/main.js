@@ -24,7 +24,14 @@
       }));
       const ld = document.getElementById('loading'); if (ld) ld.remove();
       I18N.setLang(SAVE.data.lang); SFX.setEnabled(SAVE.data.sound); UI.refreshRotate();
-      GAMEFLOW.toTitle();
+      // playtest links (openspec playtest-cheat): ?cheat=1 turns the cheat on, ?mission=N starts N;
+      // without the cheat a mission link is a session-only test run that writes nothing
+      const q = window.MH.cheat.parseUrl(location.search, window.GAME_DATA.levels.levels.length);
+      if (q.cheat && !SAVE.data.cheat) { SAVE.toggleCheat(); UI.notice(I18N.t('ui_cheat_on'), 2600); }
+      if (q.mission) {
+        if (!SAVE.data.cheat) { SAVE.temp = true; SAVE.data.unlocked = Math.max(SAVE.data.unlocked, q.mission); UI.notice(I18N.t('ui_cheat_temp'), 2600); }
+        GAMEFLOW.startLevel(q.mission);
+      } else GAMEFLOW.toTitle();
     }
   }
 

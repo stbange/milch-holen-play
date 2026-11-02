@@ -8,7 +8,7 @@
   function defaults() {
     const up = {}; IDS.forEach(i => up[i] = 0);
     return { version: 1, unlocked: 1, cleared: arr(), bank: 0, upgrades: up, lang: 'de', sound: true, ending_seen: false,
-      hints: { brake: false, a2intro: false }, tuete: arr(), boon: null, ending2_seen: false, ending3_seen: false };
+      hints: { brake: false, a2intro: false }, tuete: arr(), boon: null, ending2_seen: false, ending3_seen: false, cheat: false };
   }
   // parse + clamp a stored save string; anything broken falls back to a fresh save
   function parse(raw, nLevels, boonIds) {
@@ -30,6 +30,7 @@
       d.hints.a2intro = !!(s.hints && s.hints.a2intro);
       d.ending2_seen = !!s.ending2_seen;
       d.ending3_seen = !!s.ending3_seen;
+      d.cheat = !!s.cheat;
       d.tuete = Array.isArray(s.tuete) ? d.tuete.map((_, i) => !!s.tuete[i]) : d.cleared.slice();
       // arc 2: a save that already beat the Bürgermeister opens 'Ab nach Soest'
       if (d.cleared[4] && nLevels >= 6) d.unlocked = Math.max(d.unlocked, 6);

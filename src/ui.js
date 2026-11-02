@@ -50,6 +50,19 @@
       on(d, '[data-a=credits]', () => UI.credits(() => UI.title()));
       on(d, '[data-a=reset]', () => UI.confirmReset());
       on(d, '[data-a=fs]', () => FS.toggle());
+      // playtest cheat: 7 quick taps on the title toggle it (openspec playtest-cheat)
+      const tapSt = {};
+      d.querySelector('h1').addEventListener('pointerdown', () => {
+        if (!window.MH.cheat.tap(tapSt, performance.now())) return;
+        const onNow = SAVE.toggleCheat(); UI.title(); UI.notice(t(onNow ? 'ui_cheat_on' : 'ui_cheat_off'), 2600);
+      });
+    },
+    // a short message on top of everything (title screen included), used by the playtest cheat
+    notice(text, ms) {
+      let el = $('notice');
+      if (!el) { el = document.createElement('div'); el.id = 'notice'; document.body.appendChild(el); }
+      el.textContent = text; el.classList.remove('hidden');
+      clearTimeout(UI._noticeT); UI._noticeT = setTimeout(() => el.classList.add('hidden'), ms || 2600);
     },
     confirmReset() {
       const d = screen(`<div class="card"><p>${esc(t('ui_reset_confirm'))}</p><div class="row actions">
