@@ -168,18 +168,17 @@
       };
       show(0);
     },
-    // Arc-2 ending (after the Kirmes-Kuh): dusk trailer ride home, the kiosk queue, the singing cow,
-    // the milk-with-a-candle card, then Mathi's dedication (or config.js endingMessage) and credits.
+    // Arc-2 ending (after the Kirmes-Kuh) = end of part 2: dusk trailer ride home, the kiosk queue, the singing
+    // cow, the milk-with-a-candle card, Mathi's wish for Bio-Alpenmilch, Wurst and the biplane under the tarp,
+    // then "Ende von Teil 2 … Fortsetzung folgt: Hoch hinaus!". The real ENDE is after mission 15 (ending3).
     ending2(onDone) {
-      const cfg = window.MILCH_CONFIG || {};
-      const own = cfg.endingMessage && String(cfg.endingMessage).trim();
-      const from = cfg.endingFrom ? `<p>${esc(t('ui_from', { N: cfg.endingFrom }))}</p>` : '';
       const cards = [
         () => `<div class="dusk">${UI.artSprite('ending_trailer', 0, '', 2)}</div><p>${esc(t('ending2_1'))}</p>`,
         () => `<div class="pp-row">${UI.portrait('npc_yuppie_portrait', 2, 1400)}${UI.dogSprite('wurst_happy')}</div><p>${esc(t('ending2_2'))}</p>`,
         () => `${UI.artSprite('boss_kuh', 0, 'kuh_idle', 1)}<p class="dogline notes">♪ ♫ ♪</p><p>${esc(t('ending2_3'))}</p>`,
         () => `${UI.artSprite('ending_milk_candle', 0, '', 2)}<p class="big a2card">${esc(t('ending2_card'))}</p>`,
-        () => `<p class="ded">${esc(own ? own.replace(/\{HERO\}/g, I18N.hero()) : t('ending_dedication'))}</p>${from}`,
+        () => `<div class="pp-row">${UI.portrait('hero_portrait', 2, 1400)}${UI.portrait('npc_yuppie_portrait', 0, 0)}</div><p>${esc(t('ending2_wish'))}</p>`,
+        () => `${UI.artSprite('ending_plane_tarp', 0, '', 1.5)}<p class="dogline">${esc(t('dog_tarp'))}</p><p>${esc(t('ending2_tarp'))}</p>`,
       ];
       const minS = window.GAME_DATA.tuning.flow.card_min_show_s;
       const show = i => {
@@ -187,6 +186,34 @@
         if (i === 3) SFX.play('cheer');
         if (i < cards.length) {
           const d = screen(`<div class="ending e2c${i}">${cards[i]()}<div class="tap">${esc(t('ui_continue'))} ▶</div></div>`, 'dim');
+          tapAnywhere(d, () => show(i + 1), minS);
+          return;
+        }
+        const d = screen(`<div class="ending teil2"><p class="big">${esc(t('ending2_teil2'))}</p><p class="tease">${esc(t('ending2_tease'))}</p><p class="credits" style="white-space:pre-line">${esc(t('credits'))}</p>
+          <div class="row"><button class="btn primary" data-a="map">${esc(t('ui_play_again'))}</button></div></div>`, 'dim');
+        on(d, '[data-a=map]', onDone);
+      };
+      show(0);
+    },
+    // Arc-3 ending (after the Zeppelin-Zombie-Wirt), the real ENDE: sunset flight home with the Alpine cow,
+    // the party under the "Happy Birthday Mathi" banner, the Bio-Alpenmilch glass with a candle,
+    // then Mathi's dedication (or config.js endingMessage), ENDE and the credits.
+    ending3(onDone) {
+      const cfg = window.MILCH_CONFIG || {};
+      const own = cfg.endingMessage && String(cfg.endingMessage).trim();
+      const from = cfg.endingFrom ? `<p>${esc(t('ui_from', { N: cfg.endingFrom }))}</p>` : '';
+      const cards = [
+        () => `${UI.artSprite('ending3_sunset', 0, '', 1.25)}<p>${esc(t('ending3_1'))}</p>`,
+        () => `${UI.artSprite('ending3_party', 0, '', 1.25)}<p>${esc(t('ending3_2'))}</p>`,
+        () => `${UI.artSprite('ending_alpenmilch_candle', 0, '', 1.5)}${UI.dogSprite('wurst_happy')}<p class="big a2card">${esc(t('ending3_card'))}</p><p class="dogline">${esc(t('dog_ending3'))}</p>`,
+        () => `<p class="ded">${esc(own ? own.replace(/\{HERO\}/g, I18N.hero()) : t('ending_dedication'))}</p>${from}`,
+      ];
+      const minS = window.GAME_DATA.tuning.flow.card_min_show_s;
+      const show = i => {
+        if (i === 0) SFX.play('moo');
+        if (i === 1 || i === 2) SFX.play('cheer');
+        if (i < cards.length) {
+          const d = screen(`<div class="ending e3c${i}">${cards[i]()}<div class="tap">${esc(t('ui_continue'))} ▶</div></div>`, 'dim');
           tapAnywhere(d, () => show(i + 1), minS);
           return;
         }
@@ -226,8 +253,9 @@
         const el = $('hud-boon'); if (!el) return;
         if (!id) { el.classList.add('hidden'); el.removeAttribute('data-id'); return; }
         if (el.dataset.id === id) return;
-        const AS = window.ART_MANIFEST.assets, a1 = AS.find(x => x.key === 'ui_boon_icons'), a2 = AS.find(x => x.key === 'ui_boon_icons2');
-        const a = a1.frames[id] === undefined && a2 && a2.frames[id] !== undefined ? a2 : a1, f = a.frames[id] || 0;
+        const AS = window.ART_MANIFEST.assets, a1 = AS.find(x => x.key === 'ui_boon_icons');
+        const alt = ['ui_boon_icons2', 'ui_boon_icons3'].map(k => AS.find(x => x.key === k)).find(x => x && x.frames[id] !== undefined);
+        const a = a1.frames[id] === undefined && alt ? alt : a1, f = a.frames[id] || 0;
         el.dataset.id = id; el.classList.remove('hidden');
         el.style.backgroundImage = `url(assets/art/${a.path})`;
         el.style.backgroundSize = `${(a.imgW || a.frameCount * 16) * 2}px ${(a.imgH || 16) * 2}px`;

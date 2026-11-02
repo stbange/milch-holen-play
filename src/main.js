@@ -81,8 +81,9 @@
       return window.MH.economy.clearBonus(window.GAME_DATA.tuning.clear_bonus, window.GAME_DATA.levels.levels[n - 1], st);
     },
     // a random Kiosk-Tuete offer of tuning.boons.offer_count boons, honouring each boon's `requires`
-    tueteOffer() {
-      return window.MH.economy.tueteOffer(window.GAME_DATA.tuning.boons, SAVE.data.upgrades, Math.random);
+    // arc: the arc of the next mission, so only fitting boons are offered
+    tueteOffer(arc) {
+      return window.MH.economy.tueteOffer(window.GAME_DATA.tuning.boons, SAVE.data.upgrades, Math.random, arc);
     },
     win(n, bottles, stats) {
       GAMEFLOW.winSeq = (GAMEFLOW.winSeq || 0) + 1;   // the map jumps to the first open mission after a win
@@ -93,7 +94,8 @@
       const next = () => {
         if (res.next === 'ending') { S.ending_seen = true; SAVE.write(); SFX.music('menu'); UI.ending(() => GAMEFLOW.toMap()); }
         else if (res.next === 'ending2') { S.ending2_seen = true; SAVE.write(); SFX.music('menu'); (UI.ending2 || UI.ending)(() => GAMEFLOW.toMap()); }
-        else if (res.next === 'tuete') UI.tuete(n, GAMEFLOW.tueteOffer());
+        else if (res.next === 'ending3') { S.ending3_seen = true; SAVE.write(); SFX.music('menu'); (UI.ending3 || UI.ending)(() => GAMEFLOW.toMap()); }
+        else if (res.next === 'tuete') { const L2 = window.GAME_DATA.levels.levels[n] || {}; UI.tuete(n, GAMEFLOW.tueteOffer(L2.arc || 1)); }
         else GAMEFLOW.toMap();
       };
       UI.win(n, bottles, res.newUnlock, next, bonus, tuete);

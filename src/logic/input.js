@@ -47,7 +47,20 @@
       }
     }
   }
-  const api = { SWIPE_PX, SWIPE_MS, zoneOf, isSwipe, keyAction, landInput, bikeInput, waterInput };
+  // flight (arc 3): arrows / WASD steer, Space loops, Shift / F dives, left arrow throttles back
+  const FKEYS = { Escape: 'pause', KeyP: 'pause', ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'brake', KeyA: 'brake',
+    Space: 'loop', ShiftLeft: 'dive', ShiftRight: 'dive', KeyF: 'dive', KeyX: 'special', KeyE: 'special', Enter: 'special' };
+  const flightKey = code => FKEYS[code] || null;
+  // a right-zone tap is short and barely moves; two taps within double_tap_s start a Looping.
+  // st: {last} kept per input layer; returns 'loop' | 'tap' | null
+  function flightTap(st, now, dur, moved, FL) {
+    if (dur > FL.tap_max_s || moved > FL.tap_slop_px) return null;
+    if (st.last !== null && st.last !== undefined && now - st.last <= FL.double_tap_s) { st.last = null; return 'loop'; }
+    st.last = now; return 'tap';
+  }
+  // a quick downward flick (flick_px within flick_ms) starts a Sturzflug, once per touch
+  const isFlick = (p, y, now, FL) => !!p && !p.flicked && p.zone === 'R' && y - p.yk >= FL.flick_px && now - p.tk <= FL.flick_ms;
+  const api = { flightKey, flightTap, isFlick, SWIPE_PX, SWIPE_MS, zoneOf, isSwipe, keyAction, landInput, bikeInput, waterInput };
   const MH = root.MH || (root.MH = {}); MH.input = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

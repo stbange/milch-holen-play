@@ -47,7 +47,8 @@ window.pickupFrame = pickupFrame;
       this.attract = n === 0;
       this.L = this.attract ? { mode: 'attract', length_screens: 40, signs: [], enemies: [], hazards: [], pickups: [], win: { type: 'none', x: 1e9 } } : LEVELS[n - 1];
       this.mode = this.L.mode;
-      this.BB = this.L.boss === 'kirmeskuh' ? T.boss_kuh : B;
+      this.BB = this.L.boss === 'kirmeskuh' ? T.boss_kuh : this.L.boss === 'zeppelin' ? T.boss_zeppelin : B;
+      this.a3 = this.L.arc === 3;
       this.a2 = this.L.arc === 2; this.vehicle = null; this.water = false;
       if (this.a2) this.a2Init();
       const SB = SAVE.data.boon;
@@ -58,17 +59,21 @@ window.pickupFrame = pickupFrame;
       this.viewW = this.scale.width;
       this.ended = false; this.dead = false; this.winDone = false; this.time0 = 0; this.hitstop = 0;
       this.runBottles = 0; this.bottleFrac = 0; this.healsLeft = 1; this.arenaOn = false; this.boss = null; this.trolley = null; this.truck = null; 
-      const W = LV.worldTiles(this.L, this.BB);
-      this.W = W;
-      this.grid = new Uint8Array(W * ROWS);
       this.crates = new Map(); this.junk = []; this.gaps = [];
-      for (let c = 0; c < W; c++) { this.setCell(c, GROUND_ROW, SOLID); this.setCell(c, GROUND_ROW + 1, SOLID); }
-
-      this.makeBackground();
-      this.objs = { enemies: [], bullets: [], pickups: [], lids: [], pots: [], drops: [], waves: [], files: [], knoedels: [], scherben: [], signs: [] };
-      this.buildLevel();
-      this.makeTiles();
-      this.makeHero();
+      if (this.a3) this.a3Create();   // arc 3: the Doppeldecker flight (src/arc3.js)
+      else {
+        INPUT.mode = 'land';
+        const W0 = LV.worldTiles(this.L, this.BB);
+        this.W = W0;
+        this.grid = new Uint8Array(W0 * ROWS);
+        for (let c = 0; c < W0; c++) { this.setCell(c, GROUND_ROW, SOLID); this.setCell(c, GROUND_ROW + 1, SOLID); }
+        this.makeBackground();
+        this.objs = { enemies: [], bullets: [], pickups: [], lids: [], pots: [], drops: [], waves: [], files: [], knoedels: [], scherben: [], signs: [] };
+        this.buildLevel();
+        this.makeTiles();
+        this.makeHero();
+      }
+      const W = this.W;
       if (this.mode === 'escort') this.makeTrolley();
       if (this.mode === 'chase') this.makeTruck();
       DOG.create(this);   // Wurst, the companion dog: cosmetic only (src/dog.js)
@@ -86,6 +91,7 @@ window.pickupFrame = pickupFrame;
       if (this.stats.special_starts_full && this.stats.special_unlocked) this.charge = this.specialReq;
 
       INPUT.clear();
+      if (!this.a3) INPUT.mode = 'land';
       if (!this.attract) {
         INPUT.enabled = false;
         this.time.delayedCall(FL.restart_input_lock_s * 1000, () => { if (!this.dead && !this.ended) INPUT.enabled = true; });
@@ -99,7 +105,7 @@ window.pickupFrame = pickupFrame;
         INPUT.enabled = false; INPUT.onPause = null; INPUT.onSpecial = null;
         UI.hud.show(false);
       }
-      this.events.once('shutdown', () => { INPUT.enabled = false; UI.hud.sign(null); UI.hud.warn(null); this.scale.off('resize', this.onResize, this); });
+      this.events.once('shutdown', () => { INPUT.enabled = false; INPUT.mode = 'land'; UI.hud.sign(null); UI.hud.warn(null); this.scale.off('resize', this.onResize, this); });
       this.scale.on('resize', this.onResize, this);
       window.__PLAY = this; // used by the automated smoke test
     }
@@ -295,6 +301,7 @@ window.pickupFrame = pickupFrame;
       const dt = Math.min(deltaMs / 1000, 1 / 30);
       if (this.hitstop > 0) { this.hitstop -= dt; return; }
       this.time0 += dt;
+      if (this.a3) return this.a3Update(dt);
       const h = this.hero;
       if (this.attract) this.updateAttract(dt);
       else if (!this.dead && !this.ended) this.handleInput(dt);
@@ -433,7 +440,8 @@ window.pickupFrame = pickupFrame;
     die(reasonKey) {
       if (this.dead || this.ended) return;
       this.dead = true; INPUT.enabled = false;
-      const h = this.hero; h.vx = -30; h.vy = -220; h.spr.stop(); h.spr.setFrame(7);
+      const h = this.hero;
+      if (this.a3) this.a3Die(); else { h.vx = -30; h.vy = -220; h.spr.stop(); h.spr.setFrame(7); }
       SFX.play('lose'); SFX.music(null); UI.hud.warn(null);
       this.deathKey = reasonKey || this.L.death_extra_key;
       this.refreshHud(true);
@@ -996,6 +1004,7 @@ window.pickupFrame = pickupFrame;
     fireSpecial() {
       if (this.attract || this.dead || this.ended || !this.stats.special_unlocked || this.charge < this.specialReq) return;
       this.charge = 0;
+      if (this.a3) return this.a3Bomb();
       const h = this.hero, lvl = this.stats.special_level - 1;
       const skip = this.water;   // on the river the Knödel is a skipping stone (3 bounces)
       const spr = skip ? this.add.sprite(h.x + 16, h.y - 8, 'proj_arc2', 8).setDepth(28) : this.add.sprite(h.x + 16, h.y, 'fx_knoedel', 0).setOrigin(0.5, 1).setDepth(28);
@@ -1093,7 +1102,7 @@ window.pickupFrame = pickupFrame;
       else if (set('row2', '')) UI.hud.row2('');
       if (set('bottles', this.runBottles)) UI.hud.bottles(this.runBottles);
       if (set('boon', this.boonHud || null)) UI.hud.boon(this.boonHud || null);
-      if (this.mode === 'boss') {
+      if (this.mode === 'boss' || this.mode === 'flight_boss') {
         UI.hud.progress(null);
         const f = this.boss ? Math.round(100 * this.boss.hp / this.BB.hp_total) / 100 : null;
         if (set('boss', f)) UI.hud.boss(f);
@@ -1110,7 +1119,7 @@ window.pickupFrame = pickupFrame;
     pauseGame() {
       if (this.attract || this.dead || this.ended || this.scene.isPaused()) return;
       this.scene.pause(); SFX.music(null); INPUT.clear();
-      UI.pause(() => { this.scene.resume(); INPUT.clear(); SFX.music(this.mode === 'boss' && this.arenaOn || this.mode === 'chase' ? 'boss' : 'play'); },
+      UI.pause(() => { this.scene.resume(); INPUT.clear(); SFX.music((this.mode === 'boss' || this.mode === 'flight_boss') && this.arenaOn || this.mode === 'chase' ? 'boss' : 'play'); },
         () => GAMEFLOW.startLevel(this.levelNum, true), () => GAMEFLOW.toMap());
     }
 

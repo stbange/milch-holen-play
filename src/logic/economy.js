@@ -10,9 +10,11 @@
     return { noHit, collect, total: noHit + collect, hits, got, of: total };
   }
   const boonAllowed = (b, U) => b.requires === 'magnet_below_2' ? (U.magnet || 0) < 2 : b.requires === 'knoedel_owned' ? (U.knoedel || 0) >= 1 : true;
-  // offer_count random boons whose requirements hold
-  function tueteOffer(BN, U, rand) {
-    const pool = BN.pool.filter(b => boonAllowed(b, U)).slice();
+  // a boon without an arc fits every arc; arc may be a number or a list
+  const boonFitsArc = (b, arc) => !arc || b.arc === undefined || (Array.isArray(b.arc) ? b.arc.indexOf(arc) >= 0 : b.arc === arc);
+  // offer_count random boons whose requirements hold (and that fit the arc of the next mission, when given)
+  function tueteOffer(BN, U, rand, arc) {
+    const pool = BN.pool.filter(b => boonAllowed(b, U) && boonFitsArc(b, arc)).slice();
     core.shuffle(pool, rand);
     return pool.slice(0, BN.offer_count);
   }
@@ -30,21 +32,32 @@
     if (S.boon && S.boon.level === n) S.boon = null;               // used up: it lasted exactly this level
     const tuete = !S.tuete[n - 1] && BN.offer_on_levels.indexOf(n) >= 0;
     S.bank += bottles + bonus.total; S.cleared[n - 1] = true; S.tuete[n - 1] = true;
-    S.unlocked = Math.max(S.unlocked, Math.min(10, nLevels, n + 1));
-    const next = n === 5 ? 'ending' : n === 10 ? 'ending2' : tuete ? 'tuete' : 'map';
+    S.unlocked = Math.max(S.unlocked, Math.min(15, nLevels, n + 1));
+    const next = n === 5 ? 'ending' : n === 10 ? 'ending2' : n === 15 ? 'ending3' : tuete ? 'tuete' : 'map';
     return { tuete, newUnlock: S.unlocked > wasUnlocked, next };
   }
   const takeBoon = (S, id) => { S.boon = { id, level: 0 }; };
-  // kiosk: page 2 (river items) only once arc 2 is open
-  const kioskPages = (unlocked, nItems, per) => unlocked >= 6 && nItems > per ? Math.ceil(nItems / per) : 1;
+  // kiosk pages by arc: page 1 = village items, page 2 = river items once arc 2 is open, page 3 = flight
+  // items once arc 3 is open. Returns a list of pages, each a list of UPG indices (at most per per page).
+  function kioskLayout(UPG, unlocked, per) {
+    const open = { 1: true, 2: unlocked >= 6, 3: unlocked >= 11 }, pages = [];
+    [1, 2, 3].forEach(a => {
+      if (!open[a]) return;
+      const idx = UPG.map((u, i) => (u.arc || 1) === a ? i : -1).filter(i => i >= 0);
+      for (let k = 0; k < idx.length; k += per) pages.push(idx.slice(k, k + per));
+    });
+    return pages;
+  }
+  const pageOf = (pages, i) => pages.findIndex(p => p.indexOf(i) >= 0);
   const nextLevel = (u, owned) => u.levels[owned[u.id] || 0] || null;
   function slotState(u, i, S, sel) {
     const nxt = nextLevel(u, S.upgrades);
     return !nxt ? 'owned' : i === sel ? 'selected' : S.bank < nxt.price ? 'locked' : 'available';
   }
   // default selection: the first visible item that is not sold out (0 if none)
-  function defaultSel(UPG, owned, pages, per) {
-    return Math.max(0, UPG.findIndex((u, i) => (pages > 1 || i < per) && nextLevel(u, owned)));
+  function defaultSel(UPG, owned, pages) {
+    const vis = [].concat(...pages), i = vis.find(k => nextLevel(UPG[k], owned));
+    return i !== undefined ? i : (vis[0] || 0);
   }
   // 'maxed' | 'short' | 'bought' (bank and level updated)
   function buy(S, u) {
@@ -54,7 +67,7 @@
     S.bank -= nxt.price; S.upgrades[u.id] = lv + 1;
     return 'bought';
   }
-  const api = { clearBonus, boonAllowed, tueteOffer, bindBoon, applyWin, takeBoon, kioskPages, nextLevel, slotState, defaultSel, buy };
+  const api = { clearBonus, boonAllowed, boonFitsArc, tueteOffer, bindBoon, applyWin, takeBoon, kioskLayout, pageOf, nextLevel, slotState, defaultSel, buy };
   const MH = root.MH || (root.MH = {}); MH.economy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

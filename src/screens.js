@@ -97,25 +97,26 @@
   const K = { sel: null, page: 0 };
   // an upgrade's icon: arc-2 items live on ui_upgrade_icons2
   function upIcon(id, i, x, y, o) {
-    if (A.ui_upgrade_icons.frames[id] === undefined && A.ui_upgrade_icons2 && A.ui_upgrade_icons2.frames[id] !== undefined) return sp('ui_upgrade_icons2', A.ui_upgrade_icons2.frames[id], x, y, o);
+    for (const k of ['ui_upgrade_icons2', 'ui_upgrade_icons3']) if (A.ui_upgrade_icons.frames[id] === undefined && A[k] && A[k].frames[id] !== undefined) return sp(k, A[k].frames[id], x, y, o);
     return sp('ui_upgrade_icons', A.ui_upgrade_icons.frames[id] !== undefined ? A.ui_upgrade_icons.frames[id] : i, x, y, o);
   }
   function boonIcon(id, x, y, o) {
-    if (A.ui_boon_icons.frames[id] === undefined && A.ui_boon_icons2 && A.ui_boon_icons2.frames[id] !== undefined) return sp('ui_boon_icons2', A.ui_boon_icons2.frames[id], x, y, o);
+    for (const k of ['ui_boon_icons2', 'ui_boon_icons3']) if (A.ui_boon_icons.frames[id] === undefined && A[k] && A[k].frames[id] !== undefined) return sp(k, A[k].frames[id], x, y, o);
     return sp('ui_boon_icons', A.ui_boon_icons.frames[id] || 0, x, y, o);
   }
   function kiosk(say) {
     const S = SAVE.data, L = A.kiosk_bg.layout, owner = I18N.owner();
     const levelOf = u => S.upgrades[u.id] || 0;
     const [ox, oy] = L.slots_origin, [dx, dy] = L.slot_step, cols = L.slot_cols, per = cols * 2;
-    // page 2 ('Fluss-Kram') opens with arc 2; the river items only show there
-    const EC = window.MH.economy, pages = EC.kioskPages(S.unlocked, UPG.length, per);
-    const visible = i => pages > 1 || i < per;
-    if (K.sel === null || !UPG[K.sel] || !visible(K.sel)) { K.sel = EC.defaultSel(UPG, S.upgrades, pages, per); }
-    K.page = Math.floor(K.sel / per);
+    // pages by arc: 'Fluss-Kram' opens with arc 2, 'Flug-Kram' with arc 3
+    const EC = window.MH.economy, layout = EC.kioskLayout(UPG, S.unlocked, per), pages = layout.length;
+    const visible = i => EC.pageOf(layout, i) >= 0;
+    if (K.sel === null || !UPG[K.sel] || !visible(K.sel)) { K.sel = EC.defaultSel(UPG, S.upgrades, layout); }
+    K.page = Math.max(0, EC.pageOf(layout, K.sel));
+    const nextPage = (K.page + 1) % pages, pageLbl = (nextPage ? '' : '◀ ') + t('ui_kiosk_page' + (nextPage + 1)) + (nextPage ? ' ▶' : '');
     const slots = UPG.map((u, i) => {
-      if (Math.floor(i / per) !== K.page) return '';
-      const j = i % per;
+      if (EC.pageOf(layout, i) !== K.page) return '';
+      const j = layout[K.page].indexOf(i);
       const lv = levelOf(u), nxt = u.levels[lv], maxed = !nxt, short = nxt && S.bank < nxt.price;
       const state = EC.slotState(u, i, S, K.sel);
       const x = ox + (j % cols) * dx, y = oy + Math.floor(j / cols) * dy;
@@ -159,7 +160,7 @@
       + (say === 'kiosk_bought' ? `<span class="ptxt silk dogsay" id="k-dogsay" style="left:${kx - 50}px;top:${L.counter_overlay_y - 17}px">${esc(t('dog_buy'))}</span>` : '')
       + `<span class="ptxt pix title" style="left:${L.title[0]}px;top:${L.title[1]}px">${esc(t('kiosk_name'))}</span>` + bank(S.bank)
       + slots + detail + dialogue
-      + (pages > 1 ? btn('data-a="kpage"', ox, oy + 2 * dy - 2, 2 * dx + 40, 14, `<span class="c" style="width:${2 * dx + 40}px;height:14px">${nine('panel_dialogue', 0, 0, 2 * dx + 40, 14)}<span class="ptxt silk lbl" style="left:0;top:3px;width:${2 * dx + 40}px">${esc((K.page ? '◀ ' : '') + t(K.page ? 'ui_kiosk_page1' : 'ui_kiosk_page2') + (K.page ? '' : ' ▶'))}</span></span>`, t(K.page ? 'ui_kiosk_page1' : 'ui_kiosk_page2')) : '')
+      + (pages > 1 ? btn('data-a="kpage"', ox, oy + 2 * dy - 2, 2 * dx + 40, 14, `<span class="c" style="width:${2 * dx + 40}px;height:14px">${nine('panel_dialogue', 0, 0, 2 * dx + 40, 14)}<span class="ptxt silk lbl" style="left:0;top:3px;width:${2 * dx + 40}px">${esc(pageLbl)}</span></span>`, pageLbl) : '')
       + thumb('back', 'normal', L.leave_button[0], L.leave_button[1], 'data-a="leave"', t('kiosk_leave'));
     const d = stage('kiosk2', html, '#2a1c16');
     const npc = d.querySelector('#k-npc'), por = d.querySelector('#k-portrait');
@@ -169,7 +170,7 @@
     if (say === 'kiosk_bought') setTimeout(() => { const g = d.querySelector('#k-dog'), b = d.querySelector('#k-dogsay'); if (g && g.isConnected) play(g, 'wurst_sit'); if (b) b.remove(); }, 1500);
 
     onTap(d, '[data-u]', el => { const i = +el.dataset.u; if (i === K.sel) return; SFX.play('click'); K.sel = i; kiosk(); });
-    onTap(d, '[data-a=kpage]', () => { SFX.play('click'); const np = (K.page + 1) % pages; K.sel = np * per; kiosk(); });
+    onTap(d, '[data-a=kpage]', () => { SFX.play('click'); K.sel = layout[nextPage][0]; kiosk(); });
     onTap(d, '[data-a=leave]', () => { SFX.play('click'); K.sel = null; UI.map(); });
     onTap(d, '[data-a=buy]', () => {
       const r = EC.buy(S, UPG[K.sel]);
@@ -194,10 +195,10 @@
     const PG = window.MH.progress, unlocked = Math.min(LEVELS.length, S.unlocked);
     const prog = S.unlocked + '|' + S.cleared.filter(Boolean).length + '|' + ((window.GAMEFLOW && GAMEFLOW.winSeq) || 0);
     if (M.unl !== prog) { M.unl = prog; M.sel = null; }   // progress changed (new mission open / one cleared): jump to the first open one
-    const mv = PG.mapView(S, LEVELS.length, A.map_bg_arc2, M.sel), has2 = mv.has2, page = mv.page, n0 = mv.n0, n1 = mv.n1;   // arc-2 nodes not built yet show locked
+    const mv = PG.mapView(S, LEVELS.length, A.map_bg_arc2, M.sel, A.map_bg_arc3), has2 = mv.has2, page = mv.page, n0 = mv.n0, n1 = mv.n1;
     M.sel = mv.sel;
     M.page = page;
-    const bg = page === 2 ? A.map_bg_arc2 : A.map_bg, nodes = bg.nodes, B = bg.buttons, nkey = page === 2 ? 'map_nodes_arc2' : 'map_nodes', bgKey = page === 2 ? 'map_bg_arc2' : 'map_bg';
+    const sfx = page === 1 ? '' : '_arc' + page, bgKey = 'map_bg' + sfx, nkey = 'map_nodes' + sfx, bg = A[bgKey], nodes = bg.nodes, B = bg.buttons;
     const NF = A[nkey].frames;
     // path dots: lit when the mission at the end of the segment is unlocked
     let dots = '';
@@ -216,8 +217,8 @@
     }
     if (nodes.kiosk) { const [kx, ky] = nodes.kiosk; ns += btn('data-a="kiosk-node"', kx - 12, ky - 12, 24, 24, sp('map_nodes', A.map_nodes.frames.kiosk.open, 0, 0, { cls: 'c' }), t('kiosk_name')); }
     // arc switch
-    const pl = page === 2 ? '◀ ' + t('ui_arc1') : t('ui_arc2') + ' ▶', pw = 112;
-    if (has2) ns += btn(`data-a="page"`, 192 - pw / 2, 182, pw, 24, `<span class="c" style="width:${pw}px;height:24px">${nine('panel_dialogue', 0, 0, pw, 24, page === 1 ? 'filter:hue-rotate(-20deg) saturate(1.6) brightness(1.15)' : '')}<span class="ptxt pix lbl" style="left:0;top:7px;width:${pw}px">${esc(pl)}</span></span>`, pl);
+    const np = page % mv.pages + 1, pl = np === 1 ? '◀ ' + t('ui_arc1') : t('ui_arc' + np) + ' ▶', pw = 112;
+    if (has2) ns += btn(`data-a="page"`, 192 - pw / 2, 182, pw, 24, `<span class="c" style="width:${pw}px;height:24px">${nine('panel_dialogue', 0, 0, pw, 24, np > page ? 'filter:hue-rotate(-20deg) saturate(1.6) brightness(1.15)' : '')}<span class="ptxt pix lbl" style="left:0;top:7px;width:${pw}px">${esc(pl)}</span></span>`, pl);
     // hero pin above the selected node + the name plate under it
     const [sx, sy] = nodes['l' + M.sel];
     const pin = sp('map_hero_marker', 0, sx - 8, sy - 10 - 21, { id: 'm-pin', anim: 'map_hero_bob' });
@@ -247,8 +248,7 @@
     });
     onTap(d, '[data-a=page]', () => {
       SFX.play('click');
-      if (page === 1) { const f = LEVELS.findIndex((_, i) => i >= 5 && i < unlocked && !S.cleared[i]); M.sel = f >= 0 ? f + 1 : Math.min(10, unlocked); }
-      else { const f = LEVELS.findIndex((_, i) => i < 5 && !S.cleared[i]); M.sel = f >= 0 ? f + 1 : 5; }
+      M.sel = PG.nextPageSel(S, unlocked, page, mv.pages);
       map();
     });
     onTap(d, '[data-a=kiosk], [data-a=kiosk-node]', () => { SFX.play('click'); UI.kiosk(); });
