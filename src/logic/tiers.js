@@ -247,7 +247,7 @@
   // kind: 'buergermeister' | 'kirmeskuh' | 'zeppelin' (the boss id)
   function bossFor(BB, tier, D) {
     if (tier === 'easy' || !parseTier(tier)) return BB;
-    const B = clone(BB), m = info(D, tier).boss_hp, t0 = BB.phase_hp_thresholds;
+    const by = D.boss_hp_by_boss && D.boss_hp_by_boss[tier], B = clone(BB), m = by && typeof by[BB.id] === 'number' ? by[BB.id] : info(D, tier).boss_hp, t0 = BB.phase_hp_thresholds;
     B.hp_total = Math.round(BB.hp_total * m);
     B.phase_hp_thresholds = [B.hp_total, Math.round(B.hp_total * D.boss_phase2_ratio), Math.round(B.hp_total * t0[2] / t0[0])];
     const R = tier === 'hard' && D.hard_boss[BB.id];
