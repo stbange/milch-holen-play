@@ -315,7 +315,7 @@
         if (e.state === 'idle' && dist > 30 && dist < d.spit_range_px && onScreen && e.t <= 0) {
           e.state = 'tele'; e.t = Math.max(d.spit_telegraph_s, TL.min_s); e.spr.play('schnorchel_tell'); SFX.play('alert'); e.alert = this.alertFx(e.x, e.y - 24); e.spr.setTint(ORANGE);
         } else if (e.state === 'tele' && e.t <= 0) {
-          e.state = 'idle'; e.t = d.spit_interval_s; e.spr.clearTint(); this.dropAlert(e);
+          e.state = 'idle'; e.t = this.fireI(d.spit_interval_s); e.spr.clearTint(); this.dropAlert(e);
           e.spr.play('schnorchel_spit'); e.spr.once('animationcomplete', () => e.alive && e.spr.play('schnorchel_swim'));
           this.a2Lob('spit', e.x - 6, e.y - 18, tg.x + tg.vx * d.spit_flight_s, h.y - 14, d.spit_flight_s, 400);
         }
@@ -381,7 +381,7 @@
         else if (e.state === 'rise' && e.t <= 0) { e.state = 'up'; e.t = 0.3; }
         else if (e.state === 'up' && e.t <= 0 && dist > 20 && onScreen) { e.state = 'aim'; e.t = TL.min_s; this.a2Tell(e, 500); SFX.play('warn'); }
         else if (e.state === 'aim' && e.t <= 0) {
-          e.state = 'up'; e.t = d.throw_interval_s; this.dropAlert(e);
+          e.state = 'up'; e.t = this.fireI(d.throw_interval_s); this.dropAlert(e);
           e.spr.play('schlamm_throw');
           // flat throw at chest height: duck under it or hop over it
           const f = d.mud_flight_s, sx = e.x - 6, sy = GY - 28, tx = tg.x + tg.vx * f;
@@ -419,7 +419,7 @@
           e.state = 'tele'; e.t = Math.max(d.shout_tell_s, TL.min_s); e.spr.play('markt_shout'); SFX.play('honk'); e.alert = this.alertFx(e.x - 10, e.y - e.h - 4); e.spr.setTint(ORANGE);
           this.a2Label(e.x - 8, e.y - e.h - 14, t('a2_frisch'));
         } else if (e.state === 'tele' && e.t <= 0) {
-          e.state = 'idle'; e.t = d.throw_interval_s; e.spr.clearTint(); this.dropAlert(e);
+          e.state = 'idle'; e.t = this.fireI(d.throw_interval_s); e.spr.clearTint(); this.dropAlert(e);
           e.spr.play('markt_throw'); e.spr.once('animationcomplete', () => e.alive && e.spr.play('markt_idle'));
           const f = d.cabbage_flight_s, px = tg.x + tg.vx * f;
           [-1, 0, 1].forEach(k => this.a2Lob('cabbage', e.x - 18, e.y - 34, px + k * d.cabbage_spread_px, h.y - 14, f, 400));

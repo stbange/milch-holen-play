@@ -26,15 +26,21 @@
     if (S.boon.level !== n) { S.boon = null; return true; }
     return false;
   }
-  // book a won mission into the save; returns what the win screen needs
-  function applyWin(S, n, bottles, bonus, BN, nLevels) {
+  // book a won mission into the save; returns what the win screen needs. tierOpt (difficulty tiers):
+  // { pfand: multiplier, rank: 1-3, gold: id of the gold look this win unlocks or null }
+  function applyWin(S, n, bottles, bonus, BN, nLevels, tierOpt) {
+    const to = tierOpt || { pfand: 1, rank: 1, gold: null };
     const wasUnlocked = S.unlocked;
     if (S.boon && S.boon.level === n) S.boon = null;               // used up: it lasted exactly this level
     const tuete = !S.tuete[n - 1] && BN.offer_on_levels.indexOf(n) >= 0;
-    S.bank += bottles + bonus.total; S.cleared[n - 1] = true; S.tuete[n - 1] = true;
+    const booked = Math.round((bottles + bonus.total) * to.pfand);
+    S.bank += booked; S.cleared[n - 1] = true; S.tuete[n - 1] = true;
+    let bestUp = false, goldNew = null;
+    if (S.best) { bestUp = to.rank > (S.best[n - 1] || 0); if (bestUp) S.best[n - 1] = to.rank; }
+    if (to.gold && S.cosmetics && !S.cosmetics[to.gold]) { S.cosmetics[to.gold] = true; S.cosmetics.gold_off = false; goldNew = to.gold; }
     S.unlocked = Math.max(S.unlocked, Math.min(15, nLevels, n + 1));
     const next = n === 5 ? 'ending' : n === 10 ? 'ending2' : n === 15 ? 'ending3' : tuete ? 'tuete' : 'map';
-    return { tuete, newUnlock: S.unlocked > wasUnlocked, next };
+    return { tuete, newUnlock: S.unlocked > wasUnlocked, next, booked, bestUp, goldNew };
   }
   const takeBoon = (S, id) => { S.boon = { id, level: 0 }; };
   // kiosk pages by arc: page 1 = village items, page 2 = river items once arc 2 is open, page 3 = flight

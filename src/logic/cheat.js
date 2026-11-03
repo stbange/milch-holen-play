@@ -28,14 +28,15 @@
     d.cheat = false; d.lang = cur.lang; d.sound = cur.sound;
     return d;
   }
-  // parseUrl('?mission=13&cheat=1', 15) -> { mission: 13, cheat: true }; bad values -> mission null
+  // parseUrl('?mission=13&cheat=1&tier=hard', 15) -> { mission: 13, cheat: true, tier: 'hard' }; bad values -> null
   function parseUrl(search, n) {
     const q = {};
     String(search || '').replace(/^\?/, '').split('&').forEach(kv => {
       const i = kv.indexOf('='); if (i > 0) q[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1));
     });
     const m = /^\d+$/.test(q.mission || '') ? +q.mission : 0;
-    return { mission: m >= 1 && m <= n ? m : null, cheat: q.cheat === '1' };
+    const tier = ['easy', 'medium', 'hard'].indexOf(q.tier) >= 0 ? q.tier : null;
+    return { mission: m >= 1 && m <= n ? m : null, cheat: q.cheat === '1', tier };
   }
   const api = { TAPS, WINDOW_MS, GAP_MS, BONUS, REAL_KEY, tap, enable, disable, parseUrl };
   const MH = root.MH || (root.MH = {}); MH.cheat = api;

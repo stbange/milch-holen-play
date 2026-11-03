@@ -229,15 +229,21 @@
       + `<span class="ptxt pix title" style="left:6px;top:4px">${esc(t('ui_missions'))}</span>` + bank(S.bank)
       + thumb('back', 'normal', B.back[0], B.back[1], 'data-a="back"', t('ui_back'))
       + thumb('kiosk', 'normal', B.kiosk[0], B.kiosk[1], 'data-a="kiosk"', t('ui_kiosk'))
-      + thumb('play', 'normal', B.play[0], B.play[1], 'data-a="play"', t('ui_play'));
+      + thumb('play', 'normal', B.play[0], B.play[1], 'data-a="play"', t('ui_play'))
+      + tierPills(S.tier, B.play);
     const d = stage('map2', html, '#2d4a22');
     // keep the name plate inside the stage, using the map_label nine-slice behind the text
     const lab = d.querySelector('#m-label'), txt = lab.querySelector('span');
-    const w = Math.ceil(txt.scrollWidth) + 2;
+    // best tier cleared for the selected mission: 1-3 Pfand bottles after the name (difficulty tiers)
+    const best = (S.best && S.best[M.sel - 1]) || 0, tw = Math.ceil(txt.scrollWidth) + 2;
+    const w = tw + (best ? best * 10 + 2 : 0);
     let lx = Math.round(sx - w / 2); lx = Math.max(4, Math.min(384 - 4 - w, lx));
     lab.style.left = lx + 'px'; lab.style.width = w + 'px';
     lab.insertAdjacentHTML('afterbegin', nine('map_label', 0, 0, w, 14));
-    if (sy + 14 + 14 > 176 && sx > 290) lab.style.top = (sy - 38) + 'px';
+    for (let i = 0; i < best; i++) lab.insertAdjacentHTML('beforeend', sp('ui_pfand_icon', 0, tw + 1 + i * 10, 0, { cls: 'tier-bottle' }));
+    lab.dataset.best = best;
+    // move the plate above the node when it would cover the buttons or the tier pills
+    if ((sy + 14 + 14 > 176 && sx > 290) || (sy + 14 + 14 > PILL_Y && lx + w > PILL_X0)) lab.style.top = (sy - 38) + 'px';
 
     onTap(d, '[data-l]', el => {
       const n = +el.dataset.l;
@@ -254,7 +260,23 @@
     onTap(d, '[data-a=kiosk], [data-a=kiosk-node]', () => { SFX.play('click'); UI.kiosk(); });
     onTap(d, '[data-a=back]', () => { SFX.play('click'); UI.title(); });
     onTap(d, '[data-a=play]', () => { SFX.play('click'); UI.levelCard(M.sel); });
+    onTap(d, '[data-tier]', el => {
+      const tr = el.dataset.tier; if (tr === S.tier) return;
+      SFX.play('click'); S.tier = tr; SAVE.write(); map();   // the last pick is the default next time
+    });
     return d;
+  }
+  // Difficulty pills (Leicht / Mittel / Schwer) in a row above the play button; no gating
+  const PILL_W = 34, PILL_H = 16, PILL_GAP = 2, PILL_Y = 150, PILL_X0 = 384 - 4 - 3 * PILL_W - 2 * PILL_GAP;
+  function tierPills(cur, playXY) {
+    const tiers = window.MH.tiers.TIERS, sel = window.MH.tiers.parseTier(cur) || 'easy';
+    return tiers.map((tr, i) => {
+      const x = PILL_X0 + i * (PILL_W + PILL_GAP), on = tr === sel;
+      const style = on ? 'filter:hue-rotate(-20deg) saturate(1.6) brightness(1.15)' : 'filter:grayscale(0.4) brightness(0.85)';
+      return btn(`data-tier="${tr}" data-on="${on ? 1 : 0}" aria-pressed="${on}"`, x, PILL_Y, PILL_W, PILL_H,
+        `<span class="c" style="width:${PILL_W}px;height:${PILL_H}px">${nine('panel_dialogue', 0, 0, PILL_W, PILL_H, style)}<span class="ptxt pix lbl tierlbl${on ? ' on' : ''}" style="left:0;top:3px;width:${PILL_W}px">${esc(t('ui_tier_' + tr))}</span></span>`,
+        t('ui_tier_label') + ': ' + t('ui_tier_' + tr));
+    }).join('');
   }
 
   // =====================================================================================

@@ -3,12 +3,14 @@
   'use strict';
   const KEY = 'milchholen.save.v1';
   const IDS = ['gun_rate', 'spread', 'tracks', 'heart', 'magnet', 'knoedel', 'schwimmweste', 'klingel', 'fallschirm', 'seitenruder'];
-  const NL = 15;   // missions across the three arcs (arc 2 'Ab nach Soest' = 6..10, arc 3 'Hoch hinaus' = 11..15)
+  const NL = 15;
+  const TIERS = ['easy', 'medium', 'hard'];   // missions across the three arcs (arc 2 'Ab nach Soest' = 6..10, arc 3 'Hoch hinaus' = 11..15)
   const arr = () => new Array(NL).fill(false);
   function defaults() {
     const up = {}; IDS.forEach(i => up[i] = 0);
     return { version: 1, unlocked: 1, cleared: arr(), bank: 0, upgrades: up, lang: 'de', sound: true, ending_seen: false,
-      hints: { brake: false, a2intro: false }, tuete: arr(), boon: null, ending2_seen: false, ending3_seen: false, cheat: false };
+      hints: { brake: false, a2intro: false }, tuete: arr(), boon: null, ending2_seen: false, ending3_seen: false, cheat: false,
+      tier: 'easy', best: new Array(NL).fill(0), cosmetics: { gold_board: false, gold_sup: false, gold_plane: false, gold_off: false } };
   }
   // parse + clamp a stored save string; anything broken falls back to a fresh save
   function parse(raw, nLevels, boonIds) {
@@ -31,6 +33,10 @@
       d.ending2_seen = !!s.ending2_seen;
       d.ending3_seen = !!s.ending3_seen;
       d.cheat = !!s.cheat;
+      // difficulty tiers: older saves load as easy with no best tiers and no gold looks
+      d.tier = TIERS.indexOf(s.tier) >= 0 ? s.tier : 'easy';
+      if (Array.isArray(s.best)) d.best = d.best.map((_, i) => Math.max(0, Math.min(3, s.best[i] | 0)));
+      if (s.cosmetics) Object.keys(d.cosmetics).forEach(k => d.cosmetics[k] = !!s.cosmetics[k]);
       d.tuete = Array.isArray(s.tuete) ? d.tuete.map((_, i) => !!s.tuete[i]) : d.cleared.slice();
       // arc 2: a save that already beat the Bürgermeister opens 'Ab nach Soest'
       if (d.cleared[4] && nLevels >= 6) d.unlocked = Math.max(d.unlocked, 6);

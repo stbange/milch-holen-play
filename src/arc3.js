@@ -18,7 +18,7 @@
   P.a3Create = function () {
     const L = this.L;
     this.vehicle = 'plane'; this.W = 100000; this.camX = 0;
-    this.scroll = F.scrollSpeed(L, FL, false, this.BB);
+    this.scroll = F.scrollSpeed(L, FL, false, this.BB) * window.MH.tiers.scrollMult(this.tier, 'flight', T.difficulty);
     this.plane = F.newPlane(FL);
     this.mods = F.planeMods(FL, SAVE.data.upgrades, this.stats, this.boon);
     this.drag = { sid: -1, last: 0 };
@@ -67,7 +67,7 @@
     const p = this.plane, h = this.hero, O = this.a3o, alive = !this.dead && !this.ended;
     if (alive) this.a3Input();
     if (this.L.mode === 'flight_boss' && !this.arenaOn && h.x >= this.L.arena_start_x * TILE) this.a3Arena();
-    const speed = this.scroll = F.scrollSpeed(this.L, FL, this.arenaOn, this.BB);
+    const speed = this.scroll = F.scrollSpeed(this.L, FL, this.arenaOn, this.BB) * (this.arenaOn ? 1 : window.MH.tiers.scrollMult(this.tier, 'flight', T.difficulty));
     if (!this.dead) this.camX += speed * dt;
     if (alive) {
       p.ty += F.dragDelta(this.drag, INPUT.flight);
@@ -107,7 +107,7 @@
   const screenOf = (sc, x) => x - sc.camX;
   P.a3Spawn = function (e, x, y) {
     const d = e.def, an = d.sprite === 'a3_kiste' ? 'kiste' : e.type;
-    e.x = x; e.y = y; e.hp = d.hp; e.w = d.hitbox[0]; e.h = d.hitbox[1]; e.vx = 0; e.vy = 0; e.t = 0; e.active = true; e.ground = !!d.ground;
+    e.x = x; e.y = y; e.hp = this.ehp(d.hp); e.w = d.hitbox[0]; e.h = d.hitbox[1]; e.vx = 0; e.vy = 0; e.t = 0; e.active = true; e.ground = !!d.ground;
     e.spr = this.add.sprite(x, y, d.sprite, 0).setDepth(25);
     e.anim = an; e.spr.play(an === 'kiste' ? 'kiste_fall' : an + '_fly');
     return e;
@@ -161,7 +161,7 @@
           break;
         }
         case 'ballon': {
-          if (e.state === 'tell') { e.tt -= dt; if (e.tt <= 0) { this.a3Shot('sandsack', e.x, e.y + e.h / 2, 0, d.drop_speed, 0); e.drops = (e.drops || 0) + 1; e.state = e.drops < d.drops ? 'rest' : 'done'; e.rt = d.redrop_s; e.spr.play('ballon_fly'); } }
+          if (e.state === 'tell') { e.tt -= dt; if (e.tt <= 0) { this.a3Shot('sandsack', e.x, e.y + e.h / 2, 0, d.drop_speed, 0); e.drops = (e.drops || 0) + 1; e.state = e.drops < d.drops ? 'rest' : 'done'; e.rt = this.fireI(d.redrop_s, tellS); e.spr.play('ballon_fly'); } }
           else if (e.state === 'rest') { e.rt -= dt; if (e.rt <= 0 && ex > p.sx + 30) { e.state = 'tell'; e.tt = tellS; e.spr.play('ballon_tell'); } }
           e.y = e.ly + 2 * Math.sin(e.t * 2);
           break;
@@ -184,7 +184,7 @@
           if (e.state === 'idle_wait') break;
           if (e.state === 'idle') { e.it -= dt; if (e.it <= 0 && ex < vw - 10) { e.state = 'tell'; e.tt = tellS; e.spr.play(e.anim + '_tell'); this.a3Tell(e, e.x, e.y - e.h / 2); this.a3Aim(e); } break; }
           if (e.state === 'tell') { e.tt -= dt; if (e.type === 'hagelgeist') this.a3Aim(e); if (e.tt <= 0) this.a3Fire(e); break; }
-          if (e.state === 'fire') { e.bt -= dt; if (e.bt <= 0) { e.state = 'idle'; e.it = d.interval_s - tellS; e.spr.play(e.anim + '_fly'); this.a3o.zones = this.a3o.zones.filter(z => z.src !== e); } }
+          if (e.state === 'fire') { e.bt -= dt; if (e.bt <= 0) { e.state = 'idle'; e.it = this.fireI(d.interval_s, tellS + 0.5) - tellS; e.spr.play(e.anim + '_fly'); this.a3o.zones = this.a3o.zones.filter(z => z.src !== e); } }
           break;
         }
       }

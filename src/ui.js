@@ -97,14 +97,17 @@
         <div class="row actions"><button class="btn primary" data-a="resume">${esc(t('ui_resume'))}</button>
         <button class="btn" data-a="restart">${esc(t('ui_restart'))}</button><button class="btn" data-a="map">${esc(t('ui_to_map'))}</button></div>
         <div class="row actions"><button class="btn small" data-a="sound">${esc(t(S.sound ? 'ui_sound_on' : 'ui_sound_off'))}</button>
-        <button class="btn small" data-a="lang">${S.lang === 'de' ? 'English' : 'Deutsch'}</button>${FS.button()}</div></div>`, 'dim');
+        <button class="btn small" data-a="lang">${S.lang === 'de' ? 'English' : 'Deutsch'}</button>${FS.button()}${UI.hasGold() ? `<button class="btn small" data-a="gold">${esc(t(S.cosmetics.gold_off ? 'ui_gold_off' : 'ui_gold_on'))}</button>` : ''}</div></div>`, 'dim');
       on(d, '[data-a=resume]', () => { clear(); onResume(); });
       on(d, '[data-a=restart]', () => { clear(); onRestart(); });
       on(d, '[data-a=map]', () => { clear(); onMap(); });
       on(d, '[data-a=sound]', () => { S.sound = !S.sound; SFX.setEnabled(S.sound); SAVE.write(); UI.pause(onResume, onRestart, onMap); });
       on(d, '[data-a=lang]', () => { S.lang = S.lang === 'de' ? 'en' : 'de'; I18N.setLang(S.lang); SAVE.write(); UI.pause(onResume, onRestart, onMap); UI.refreshRotate(); });
       on(d, '[data-a=fs]', () => FS.toggle());
+      on(d, '[data-a=gold]', () => { S.cosmetics.gold_off = !S.cosmetics.gold_off; SAVE.write(); if (window.GOLD) GOLD.apply(); UI.pause(onResume, onRestart, onMap); });
     },
+    // any gold look unlocked (hard clears of M5 / M10 / M15)?
+    hasGold() { const c = SAVE.data.cosmetics || {}; return !!(c.gold_board || c.gold_sup || c.gold_plane); },
     death(n, extraKey, onRestart, onMap) {
       const k = 'death_' + (1 + Math.floor(Math.random() * 3));
       const line = extraKey && Math.random() < 0.6 ? t(extraKey) : t(k);
@@ -116,8 +119,11 @@
     },
     // Level clear: results strip (Pfand, hits) + the clear bonus counting up (spec §8b), then
     // [Weiter] (Kiosk-Tuete on a first clear, else the map) and [Zu Yuppies Kiosk].
-    win(n, bottles, unlockedNew, onNext, bonus, tuete) {
+    // res (optional): applyWin result with booked (Pfand after the tier multiplier), tier and goldNew
+    win(n, bottles, unlockedNew, onNext, bonus, tuete, res) {
       const L = LEVELS[n - 1], B = bonus || { noHit: 0, collect: 0, total: 0, hits: 0 };
+      const R = res || {}, booked = R.booked === undefined ? bottles + B.total : R.booked, multKey = booked !== bottles + B.total && R.tier && R.tier !== 'easy' ? 'ui_pfand_mult_' + R.tier : null;
+      const goldIdx = { gold_board: 1, gold_sup: 2, gold_plane: 3 }[R.goldNew];
       const lines = [];
       if (B.noHit) lines.push(['ui_bonus_no_hit', B.noHit]);
       if (B.collect) lines.push(['ui_bonus_collect', B.collect]);
@@ -125,19 +131,24 @@
       const d = screen(`<div class="card wincard" style="text-align:center"><h2>${esc(t('ui_level_clear'))}</h2>
         <div class="pp-row">${UI.portrait('hero_portrait', 2, 1200)}${UI.dogSprite('wurst_happy')}</div>${n === 1 ? '<span class="milk"></span>' : ''}<p>${esc(t(L.card_after_key))}</p>
         <div class="results"><span>${esc(t('ui_result_pfand', { N: bottles }))}</span><span>${esc(t('ui_result_hits', { N: B.hits }))}</span></div>
-        <div class="bonuses">${lines.map(([k], i) => `<span class="bonus" data-i="${i}">${esc(t(k, { N: 0 }))}</span>`).join('')}</div>
+        <div class="bonuses">${lines.map(([k], i) => `<span class="bonus" data-i="${i}">${esc(t(k, { N: 0 }))}</span>`).join('')}${multKey ? `<span class="bonus" id="win-mult">${esc(t(multKey))}</span>` : ''}${goldIdx ? `<span class="bonus gold on">${esc(t('ui_gold_unlock_' + goldIdx))}</span>` : ''}</div>
         <div class="foot"><p class="goal"><span id="win-banked">${esc(t('ui_bottles_banked', { N: bottles }))}</span> · ${bankHtml().replace('class="bank"', 'class="bank" style="display:inline-flex;color:var(--white)"')}</p>
         <div class="row actions"><button class="btn primary" data-a="next">${esc(t('ui_next'))} ▶</button>${kioskBtn}</div></div></div>`, 'dim');
       // count-up: each bonus ticks from 0 to its value, the banked total follows; the bank already holds it
       const bankEl = d.querySelector('.bank span'), banked = d.querySelector('#win-banked');
-      const bank1 = SAVE.data.bank; let shown = bottles;
-      if (bankEl) bankEl.textContent = bank1 - B.total;
+      const bank1 = SAVE.data.bank, base = bank1 - booked + bottles; let shown = bottles;
+      if (bankEl) bankEl.textContent = base;
+      // the tier multiplier (medium x1.25, hard x1.5) is applied last, after the bonus count-up
+      const finish = () => {
+        const m = d.querySelector('#win-mult'); if (!m || !d.isConnected) return;
+        m.classList.add('on'); banked.textContent = t('ui_bottles_banked', { N: booked }); if (bankEl) bankEl.textContent = bank1; SFX.play('cheer');
+      };
       let li = 0, v = 0;
       const step = () => {
-        if (!d.isConnected || li >= lines.length) { if (d.isConnected && lines.length) SFX.play('cheer'); return; }
+        if (!d.isConnected || li >= lines.length) { if (d.isConnected && lines.length && !multKey) SFX.play('cheer'); if (multKey) setTimeout(finish, 300); return; }
         const [k, val] = lines[li], el = d.querySelector(`.bonus[data-i="${li}"]`);
         v++; shown++; el.textContent = t(k, { N: v }); el.classList.add('on');
-        banked.textContent = t('ui_bottles_banked', { N: shown }); if (bankEl) bankEl.textContent = bank1 - B.total + (shown - bottles);
+        banked.textContent = t('ui_bottles_banked', { N: shown }); if (bankEl) bankEl.textContent = base + (shown - bottles);
         SFX.play('tick');
         if (v >= val) { li++; v = 0; setTimeout(step, 260); } else setTimeout(step, 45);
       };

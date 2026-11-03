@@ -18,7 +18,7 @@ window.pickupFrame = pickupFrame;
   const HB_W = PL.hurtbox_w, HB_H = PL.hurtbox_h, HB_OFF = 7;
   const rowOf = y => Math.floor((y - ROW0) / TILE);
   const rowTop = r => ROW0 + r * TILE;
-  const MH = window.MH, PH = MH.physics, LV = MH.levels, BL = MH.boss;
+  const MH = window.MH, PH = MH.physics, LV = MH.levels, BL = MH.boss, TRS = MH.tiers, DIF = T.difficulty;
   const { clamp, approach, rng } = MH.core;
   const D = { TILE, ROW0, HB_W, HB_H, HB_OFF };
   const t = (k, v) => I18N.t(k, v);
@@ -44,10 +44,14 @@ window.pickupFrame = pickupFrame;
 
     create() {
       const n = this.levelNum;
+      if (window.GOLD) GOLD.apply();   // gold looks follow the save (unlock, pause toggle, cheat swap)
       this.attract = n === 0;
-      this.L = this.attract ? { mode: 'attract', length_screens: 40, signs: [], enemies: [], hazards: [], pickups: [], win: { type: 'none', x: 1e9 } } : LEVELS[n - 1];
+      // difficulty tier (openspec add-difficulty-tiers): easy uses the original level and boss objects
+      this.tier = this.attract ? 'easy' : (TRS.parseTier(SAVE.data.tier) || 'easy');
+      this.L = this.attract ? { mode: 'attract', length_screens: 40, signs: [], enemies: [], hazards: [], pickups: [], win: { type: 'none', x: 1e9 } } : TRS.levelFor(LEVELS[n - 1], this.tier, T);
       this.mode = this.L.mode;
-      this.BB = this.L.boss === 'kirmeskuh' ? T.boss_kuh : this.L.boss === 'zeppelin' ? T.boss_zeppelin : B;
+      this.BB = TRS.bossFor(this.L.boss === 'kirmeskuh' ? T.boss_kuh : this.L.boss === 'zeppelin' ? T.boss_zeppelin : B, this.tier, DIF);
+      this.isBgm = this.BB.id === 'buergermeister';
       this.a3 = this.L.arc === 3;
       this.a2 = this.L.arc === 2; this.vehicle = null; this.water = false;
       if (this.a2) this.a2Init();
@@ -266,7 +270,7 @@ window.pickupFrame = pickupFrame;
     spawnEnemy(type, x, y, opt) {
       const d = EN[type]; if (!d) return null;
       const spr = this.add.sprite(x, y, d.sprite || ('zombie_' + type), 0).setOrigin(0.5, 1).setDepth(20).setFlipX(true);
-      const e = { type, x, y, vx: 0, vy: 0, hp: d.hp, w: d.hitbox[0], h: d.hitbox[1], spr, state: 'idle', t: 0, alive: true, active: false,
+      const e = { type, x, y, vx: 0, vy: 0, hp: this.ehp(d.hp), w: d.hitbox[0], h: d.hitbox[1], spr, state: 'idle', t: 0, alive: true, active: false,
         drops: (opt && opt.noDrop) ? 0 : (d.bottle_drop || 0), phase: ((opt && opt.idx) || 0) * 0.13, fixed: !!(opt && opt.onBalcony), flashT: 0, hop: 0 };
       e.ak = d.sprite === 'zombie_wolfi' ? 'wolfi' : type;   // animation prefix
       if (d.a2) this.a2Spawn(e, d, opt);
@@ -357,8 +361,15 @@ window.pickupFrame = pickupFrame;
       h.slamming = true; h.vy = M.slam_speed; h.vx *= M.slam_x_speed_factor; h.spr.setAngle(0); SFX.play('throw');
     }
 
+    // tier helpers: enemy HP, fire/throw interval (s), run-speed multiplier (hard: x1.05 outside chases, escorts, arenas)
+    ehp(hp) { return TRS.enemyHp(hp, this.tier || 'easy', DIF); }
+    fireI(s, minS) { return TRS.fireInterval(s, this.tier || 'easy', DIF, minS || 0); }
     speedProfile() {
-      return PH.speedProfile({ vehicle: this.vehicle, mode: this.mode, trolleyHitched: !!(this.trolley && this.trolley.hitched), truckOn: !!(this.truck && this.truck.on) }, T);
+      const ctx = { vehicle: this.vehicle, mode: this.mode, trolleyHitched: !!(this.trolley && this.trolley.hitched), truckOn: !!(this.truck && this.truck.on) };
+      const sp = PH.speedProfile(ctx, T);
+      const kind = ctx.vehicle === 'bike' ? 'bike' : ctx.mode === 'escort' ? 'escort' : ctx.mode === 'chase' && ctx.truckOn ? 'chase' : this.arenaOn ? 'arena' : 'run';
+      const m = TRS.scrollMult(this.tier || 'easy', kind, DIF);
+      return m === 1 ? sp : Object.assign({}, sp, { run: sp.run * m });
     }
 
     moveHero(dt) {
@@ -560,7 +571,7 @@ window.pickupFrame = pickupFrame;
     // stays inside gun range of the hero's arena zone at every aspect (16:9 .. 21:9).
     bossScreenX() { return Math.min(this.viewW, this.BB.screen_x_view_cap || 440) - (384 - this.BB.screen_x); }
     startArena() {
-      if (this.BB !== B) return this.kuhStart();
+      if (!this.isBgm) return this.kuhStart();
       this.arenaOn = true;
       const cam = this.cameras.main;
       const sx = cam.scrollX + this.bossScreenX();
@@ -581,7 +592,7 @@ window.pickupFrame = pickupFrame;
       const cam = this.cameras.main, h = this.hero;
       if (!this.arenaOn && !this.dead && h.x >= this.L.arena_start_x * TILE) this.startArena();
       const bs = this.boss; if (!bs) return;
-      if (this.BB !== B) return this.kuhUpdate(dt);
+      if (!this.isBgm) return this.kuhUpdate(dt);
       const anchor = cam.scrollX + this.bossScreenX();
       if (!bs.entering && bs.alive) bs.x = anchor;
       if (bs.alive && !bs.entering) bs.spr.x = Math.round(bs.x + Math.sin(this.time0 * 3) * 2);
@@ -643,7 +654,7 @@ window.pickupFrame = pickupFrame;
       const bs = this.boss;
       dmg = BL.hitDamage(bs, this.BB, dmg); if (!dmg) return false;
       bs.hp -= dmg; this.charge += dmg * SP.charge_per_boss_damage;
-      if (this.BB !== B) return this.kuhDamaged(dmg);
+      if (!this.isBgm) return this.kuhDamaged(dmg);
       bs.spr.setTintFill(0xffffff); bs.flashT = 0.05;
       if (!bs.telegraph && (!bs.spr.anims.isPlaying || bs.spr.anims.currentAnim.key === 'boss_idle')) { bs.spr.play('boss_hit'); bs.spr.once('animationcomplete', () => bs.alive && !bs.telegraph && bs.spr.play('boss_idle')); }
       SFX.play('hit');
@@ -660,7 +671,7 @@ window.pickupFrame = pickupFrame;
       return true;
     }
     defeatBoss() {
-      if (this.BB !== B) return this.kuhDefeat();
+      if (!this.isBgm) return this.kuhDefeat();
       const bs = this.boss; bs.alive = false; bs.hp = 0; this.ended = true; INPUT.enabled = false;
       UI.hud.toast(t('boss_defeat'), 3000); bs.spr.clearTint(); bs.spr.play('boss_defeat'); SFX.play('win'); SFX.music(null);
       this.objs.waves.forEach(w => { w.alive = false; w.spr.destroy(); }); this.objs.waves = [];
@@ -715,7 +726,7 @@ window.pickupFrame = pickupFrame;
               if (e.t <= 0) { e.state = 'tele'; e.t = d.throw_telegraph_s; e.spr.play('neighbour_raise'); SFX.play('warn'); e.alert = this.alertFx(e.x, e.y - e.h - 4); }
             }
           } else if (e.state === 'tele') {
-            if (e.t <= 0) { e.state = 'idle'; e.anim = 0; e.t = (d.throw_interval_s_late && this.levelNum >= d.late_from_level) ? d.throw_interval_s_late : d.throw_interval_s; e.spr.play('neighbour_throw'); this.throwLid(e); this.dropAlert(e); }
+            if (e.t <= 0) { e.state = 'idle'; e.anim = 0; e.t = this.fireI((d.throw_interval_s_late && this.levelNum >= d.late_from_level) ? d.throw_interval_s_late : d.throw_interval_s); e.spr.play('neighbour_throw'); this.throwLid(e); this.dropAlert(e); }
           }
           if (!e.fixed) this.walkerPhysics(e, dt);
         }

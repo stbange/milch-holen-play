@@ -17,6 +17,7 @@
       L.on('progress', v => { if (bar) bar.style.width = Math.round(v * 100) + '%'; });
     }
     create() {
+      GOLD.init(this);  // gold looks (hard reward): hero sheets become canvas textures before the anims are built
       ART.build(this); // procedural extras (balcony, railing, goal flag, sparks) for things the art pack doesn't cover
       MAN.forEach(a => (a.animations || []).forEach(an => {
         if (this.anims.exists(an.key)) return;
@@ -28,6 +29,8 @@
       // without the cheat a mission link is a session-only test run that writes nothing
       const q = window.MH.cheat.parseUrl(location.search, window.GAME_DATA.levels.levels.length);
       if (q.cheat && !SAVE.data.cheat) { SAVE.toggleCheat(); UI.notice(I18N.t('ui_cheat_on'), 2600); }
+      // ?tier=easy|medium|hard picks the difficulty tier (openspec add-difficulty-tiers: Tier link)
+      if (q.tier) { SAVE.data.tier = q.tier; SAVE.write(); }
       if (q.mission) {
         if (!SAVE.data.cheat) { SAVE.temp = true; SAVE.data.unlocked = Math.max(SAVE.data.unlocked, q.mission); UI.notice(I18N.t('ui_cheat_temp'), 2600); }
         GAMEFLOW.startLevel(q.mission);
@@ -96,7 +99,10 @@
       GAMEFLOW.winSeq = (GAMEFLOW.winSeq || 0) + 1;   // the map jumps to the first open mission after a win
       const S = SAVE.data, BN = window.GAME_DATA.tuning.boons;
       const bonus = GAMEFLOW.clearBonus(n, stats);
-      const res = window.MH.economy.applyWin(S, n, bottles, bonus, BN, window.GAME_DATA.levels.levels.length), tuete = res.tuete; SAVE.write();
+      const TRS = window.MH.tiers, DIF = window.GAME_DATA.tuning.difficulty, tier = TRS.parseTier(S.tier) || 'easy';
+      const tierOpt = { pfand: TRS.info(DIF, tier).pfand, rank: TRS.rank(DIF, tier), gold: TRS.goldFor(DIF, n, tier) };
+      const res = window.MH.economy.applyWin(S, n, bottles, bonus, BN, window.GAME_DATA.levels.levels.length, tierOpt), tuete = res.tuete; SAVE.write();
+      res.tier = tier; if (res.goldNew && window.GOLD) GOLD.apply();
       UI.hud.show(false);
       const next = () => {
         if (res.next === 'ending') { S.ending_seen = true; SAVE.write(); SFX.music('menu'); UI.ending(() => GAMEFLOW.toMap()); }
@@ -105,7 +111,7 @@
         else if (res.next === 'tuete') { const L2 = window.GAME_DATA.levels.levels[n] || {}; UI.tuete(n, GAMEFLOW.tueteOffer(L2.arc || 1)); }
         else GAMEFLOW.toMap();
       };
-      UI.win(n, bottles, res.newUnlock, next, bonus, tuete);
+      UI.win(n, bottles, res.newUnlock, next, bonus, tuete, res);
     },
     toMap() {
       UI.hud.show(false);
